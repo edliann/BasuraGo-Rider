@@ -41,3 +41,10 @@ example
 # generated native folders
 /ios
 /android
+
+.env
+.env.local
+.env.*.local
+
+node_modules/
+node_modules_old/

@@ -1,98 +1,130 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
+import {
+  Redirect,
+} from 'expo-router';
+
+import {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
+  useAuth,
+} from '../contexts/AuthContext/AuthContext';
+
+export default function Index() {
+  const {
+    user,
+    rider,
+    loading: authLoading,
+  } = useAuth();
+
+  const [onboardingLoading, setOnboardingLoading] =
+    useState(true);
+
+  const [showOnboarding, setShowOnboarding] =
+    useState(false);
+
+  useEffect(() => {
+    async function checkOnboarding() {
+      try {
+        const completed =
+          await AsyncStorage.getItem(
+            'basurago_rider_onboarding_complete',
+          );
+
+        setShowOnboarding(
+          completed !== 'true',
+        );
+      } catch (error) {
+        console.error(
+          'Failed to check onboarding:',
+          error,
+        );
+
+        setShowOnboarding(true);
+      } finally {
+        setOnboardingLoading(false);
+      }
+    }
+
+    checkOnboarding();
+  }, []);
+
+  if (
+    authLoading ||
+    onboardingLoading
+  ) {
     return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
+      <View style={styles.container}>
+        <Text style={styles.logo}>
+          BasuraGo
+        </Text>
+
+        <Text style={styles.role}>
+          RIDER
+        </Text>
+
+        <ActivityIndicator
+          size="small"
+          style={styles.loader}
+        />
+      </View>
     );
   }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+
+  if (!user) {
+    if (showOnboarding) {
+      return (
+        <Redirect href="/onboarding" />
+      );
+    }
+
+    return (
+      <Redirect href="/login" />
+    );
+  }
+
+  if (!rider) {
+    return (
+      <Redirect href="/access-denied" />
+    );
+  }
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
-
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+    <Redirect href="/dashboard" />
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    backgroundColor: '#ffffff',
   },
-  title: {
-    textAlign: 'center',
+
+  logo: {
+    fontSize: 36,
+    fontWeight: '700',
   },
-  code: {
-    textTransform: 'uppercase',
+
+  role: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 3,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+
+  loader: {
+    marginTop: 32,
   },
 });
