@@ -15,6 +15,7 @@ import {
 
 import {
   useRouter,
+  useLocalSearchParams
 } from 'expo-router';
 
 import {
@@ -85,6 +86,10 @@ export default function VehicleInformationScreen() {
 
   const [saving, setSaving] =
     useState(false);
+  
+  const { returnTo } = useLocalSearchParams<{
+    returnTo?: string;
+  }>();
 
   useEffect(() => {
     loadExistingVehicleInformation();
@@ -234,7 +239,11 @@ export default function VehicleInformationScreen() {
           {
             text: 'Continue',
             onPress: () => {
-              router.replace('/verification');
+              router.replace(
+                returnTo === '/review-application'
+                  ? '/review-application'
+                  : '/verification',
+              );
             },
           },
         ],

@@ -15,7 +15,7 @@ import {
   type CameraView as CameraViewType,
 } from 'expo-camera';
 
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import {
   getCurrentUser,
@@ -52,6 +52,10 @@ export default function FaceVerificationScreen() {
 
   const [uploading, setUploading] =
     useState(false);
+
+  const { returnTo } = useLocalSearchParams<{
+    returnTo?: string;
+  }>();
 
   async function handleCapture() {
     if (
@@ -158,7 +162,9 @@ export default function FaceVerificationScreen() {
             text: 'Continue',
             onPress: () => {
               router.replace(
-                '/vehicle-information',
+                returnTo === '/review-application'
+                  ? '/review-application'
+                  : '/vehicle-information',
               );
             },
           },

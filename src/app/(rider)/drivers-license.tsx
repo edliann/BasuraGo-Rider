@@ -14,7 +14,7 @@ import {
   useCameraPermissions,
 } from 'expo-camera';
 
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { useState } from 'react';
 
@@ -68,6 +68,10 @@ export default function DriversLicenseScreen() {
     camera,
     setCamera,
   ] = useState<CameraView | null>(null);
+
+  const { returnTo } = useLocalSearchParams<{
+    returnTo?: string;
+  }>();
 
   async function handleStartCamera(
     side: CaptureSide,
@@ -211,7 +215,11 @@ export default function DriversLicenseScreen() {
           {
             text: 'Continue',
             onPress: () =>
-              router.push('/face-verification'),
+              router.replace(
+                returnTo === '/review-application'
+                  ? '/review-application'
+                  : '/face-verification',
+              ),
           },
         ],
       );
