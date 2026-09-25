@@ -7,10 +7,6 @@ import {
   getAuth,
   connectAuthEmulator,
 } from 'firebase/auth';
-import {
-  getStorage,
-  connectStorageEmulator,
-} from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -26,31 +22,7 @@ const app = initializeApp(firebaseConfig);
 
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
-if (__DEV__) {
-  const emulatorHost =
-    process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST ||
-    'localhost';
-
-  connectAuthEmulator(
-    auth,
-    `http://${emulatorHost}:9099`,
-  );
-
-  connectFirestoreEmulator(
-    db,
-    emulatorHost,
-    8082,
-  );
-
-  connectStorageEmulator(
-    storage,
-    emulatorHost,
-    9199,
-  );
-}
-
-export { app, auth, db, storage };
+export { app, auth, db };
 
 export default app;

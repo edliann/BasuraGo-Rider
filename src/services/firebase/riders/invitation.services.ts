@@ -6,8 +6,6 @@ import {
 
 import app from '../firebase';
 
-declare const __DEV__: boolean;
-
 export interface GetRiderInvitationInput {
   invitationId: string;
   invitationToken: string;
@@ -34,14 +32,6 @@ export interface CreateRiderAccountResult {
 }
 
 const functions = getFunctions(app);
-
-if (__DEV__) {
-  connectFunctionsEmulator(
-    functions,
-    '192.168.1.13',
-    5001,
-  );
-}
 
 const getRiderInvitationFunction =
   httpsCallable<

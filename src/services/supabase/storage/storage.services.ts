@@ -1,14 +1,6 @@
-import {
-  deleteObject,
-  ref,
-  uploadBytes,
-} from 'firebase/storage';
+import { supabase } from '../supabase';
 
-import { storage } from '../../firebase/firebase';
 import { getCurrentUser } from '../../firebase/auth/auth.services';
-import {
-  File,
-} from 'expo-file-system';
 
 export type RiderDocumentType =
   | 'government-id'
@@ -28,6 +20,7 @@ interface UploadRiderDocumentOptions {
 
 function getFileExtension(uri: string): string {
   const cleanUri = uri.split('?')[0];
+
   const extension = cleanUri
     .split('.')
     .pop()
@@ -98,19 +91,34 @@ export async function uploadRiderDocument({
 
   const file = await uriToBlob(uri);
 
-  const storageRef = ref(
-    storage,
-    filePath,
-  );
-
-  await uploadBytes(
-    storageRef,
-    file,
+  console.log(
+    'SUPABASE RIDER DOCUMENT UPLOAD:',
     {
+      riderId,
+      documentType,
+      filePath,
       contentType:
         file.type || 'image/jpeg',
     },
   );
+
+  const { error } =
+    await supabase.storage
+      .from('rider-documents')
+      .upload(filePath, file, {
+        contentType:
+          file.type || 'image/jpeg',
+        upsert: true,
+      });
+
+  if (error) {
+    console.error(
+      'SUPABASE STORAGE UPLOAD ERROR:',
+      error,
+    );
+
+    throw error;
+  }
 
   return filePath;
 }
@@ -169,10 +177,17 @@ export async function deleteRiderDocument(
     );
   }
 
-  const storageRef = ref(
-    storage,
-    filePath,
-  );
+  const { error } =
+    await supabase.storage
+      .from('rider-documents')
+      .remove([filePath]);
 
-  await deleteObject(storageRef);
+  if (error) {
+    console.error(
+      'SUPABASE STORAGE DELETE ERROR:',
+      error,
+    );
+
+    throw error;
+  }
 }

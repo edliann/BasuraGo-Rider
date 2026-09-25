@@ -1,20 +1,11 @@
 import {
-  deleteObject,
-  getStorage,
-  ref,
-  uploadBytes,
-} from 'firebase/storage';
-
-import {
   doc,
   getFirestore,
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore';
 
-import app, {
-  storage,
-} from '../firebase';
+import app from '../firebase';
 
 import { getCurrentUser } from '../../firebase/auth/auth.services';
 
@@ -101,39 +92,31 @@ export async function uploadRiderDocument({
 
   const file = await uriToBlob(uri);
 
-  console.log('DOCUMENT STORAGE MODE:', {
-    __DEV__,
+  console.log('DOCUMENT STORAGE MODE: SUPABASE', {
     riderId,
     filePath,
   });
 
-  if (__DEV__) {
-    const storageRef = ref(
-      storage,
-      filePath,
+  const { supabase } = await import(
+    '../../supabase/supabase'
+  );
+
+  const { error } =
+    await supabase.storage
+      .from('rider-documents')
+      .upload(filePath, file, {
+        contentType:
+          file.type || 'image/jpeg',
+        upsert: true,
+      });
+
+  if (error) {
+    console.error(
+      'SUPABASE STORAGE UPLOAD ERROR:',
+      error,
     );
 
-    await uploadBytes(storageRef, file, {
-      contentType:
-        file.type || 'image/jpeg',
-    });
-  } else {
-    const { supabase } = await import(
-      '../../supabase/supabase'
-    );
-
-    const { error } =
-      await supabase.storage
-        .from('rider-documents')
-        .upload(filePath, file, {
-          contentType:
-            file.type || 'image/jpeg',
-          upsert: true,
-        });
-
-    if (error) {
-      throw error;
-    }
+    throw error;
   }
 
   return filePath;
@@ -193,26 +176,22 @@ export async function deleteRiderDocument(
     );
   }
 
-  if (__DEV__) {
-    const storageRef = ref(
-      storage,
-      filePath,
+  const { supabase } = await import(
+    '../../supabase/supabase'
+  );
+
+  const { error } =
+    await supabase.storage
+      .from('rider-documents')
+      .remove([filePath]);
+
+  if (error) {
+    console.error(
+      'SUPABASE STORAGE DELETE ERROR:',
+      error,
     );
 
-    await deleteObject(storageRef);
-  } else {
-    const { supabase } = await import(
-      '../../supabase/supabase'
-    );
-
-    const { error } =
-      await supabase.storage
-        .from('rider-documents')
-        .remove([filePath]);
-
-    if (error) {
-      throw error;
-    }
+    throw error;
   }
 }
 
