@@ -470,8 +470,6 @@ export default function Dashboard() {
         <PickupCard
           key={pickup.id}
           pickup={pickup}
-          riderId={rider.id}
-          vehicleId={rider.vehicleId!}
           onAccepted={loadPickups}
         />
       ))}

@@ -173,6 +173,16 @@ export default function PickupDetailsScreen() {
         </Text>
 
         <Text style={styles.label}>
+          Assigned Facility
+        </Text>
+
+        <Text style={styles.value}>
+          {pickup.facilityName && pickup.facilityAddress
+            ? `${pickup.facilityName} — ${pickup.facilityAddress}`
+            : 'Facility destination unavailable'}
+        </Text>
+
+        <Text style={styles.label}>
           Waste Type
         </Text>
 

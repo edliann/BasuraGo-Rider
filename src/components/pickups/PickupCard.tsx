@@ -1,37 +1,41 @@
 import {
   Alert,
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useRef, useState } from 'react';
 
 import type { Pickup } from '../../services/firebase/pickups/pickup.types';
 
 import {
   acceptPickup,
-} from '../../services/firebase/pickups/pickup.services';
+} from '../../services/firebase/pickups/pickup-acceptance.services';
 
 interface PickupCardProps {
   pickup: Pickup;
-  riderId: string;
-  vehicleId: string;
   onAccepted: () => void;
 }
 
 export default function PickupCard({
   pickup,
-  riderId,
-  vehicleId,
   onAccepted,
 }: PickupCardProps) {
+  const [isAccepting, setIsAccepting] = useState(false);
+  const acceptingRef = useRef(false);
+
   async function handleAccept() {
+    if (acceptingRef.current) {
+      return;
+    }
+
+    acceptingRef.current = true;
+    setIsAccepting(true);
+
     try {
-      await acceptPickup(
-        pickup.id,
-        riderId,
-        vehicleId,
-      );
+      await acceptPickup(pickup.id);
 
       Alert.alert(
         'Pickup Accepted',
@@ -54,6 +58,9 @@ export default function PickupCard({
         'Unable to Accept Pickup',
         message,
       );
+    } finally {
+      acceptingRef.current = false;
+      setIsAccepting(false);
     }
   }
 
@@ -81,6 +88,16 @@ export default function PickupCard({
       <Text style={styles.value}>
         {pickup.pickupAddress ||
           'Address information unavailable'}
+      </Text>
+
+      <Text style={styles.label}>
+        Assigned Facility
+      </Text>
+
+      <Text style={styles.value}>
+        {pickup.facilityName && pickup.facilityAddress
+          ? `${pickup.facilityName} — ${pickup.facilityAddress}`
+          : 'Facility destination unavailable'}
       </Text>
 
       <Text style={styles.label}>
@@ -122,12 +139,30 @@ export default function PickupCard({
       )}
 
       <Pressable
-        style={styles.acceptButton}
+        style={[
+          styles.acceptButton,
+          isAccepting && styles.acceptButtonDisabled,
+        ]}
         onPress={handleAccept}
+        disabled={isAccepting}
       >
-        <Text style={styles.acceptButtonText}>
-          Accept Pickup
-        </Text>
+        {isAccepting ? (
+          <View style={styles.acceptingContent}>
+            <ActivityIndicator color="#ffffff" />
+            <Text
+              style={[
+                styles.acceptButtonText,
+                styles.acceptingLabel,
+              ]}
+            >
+              Accepting...
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.acceptButtonText}>
+            Accept Pickup
+          </Text>
+        )}
       </Pressable>
     </View>
   );
@@ -169,6 +204,19 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     backgroundColor: '#1b5e20',
+  },
+
+  acceptButtonDisabled: {
+    opacity: 0.7,
+  },
+
+  acceptingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  acceptingLabel: {
+    marginLeft: 8,
   },
 
   acceptButtonText: {

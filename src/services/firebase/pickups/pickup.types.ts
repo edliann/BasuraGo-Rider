@@ -18,6 +18,10 @@ export interface Pickup {
 
   status: string;
 
+  facilityId?: string;
+  facilityName?: string;
+  facilityAddress?: string;
+
   riderId: string | null;
   vehicleId: string | null;
 

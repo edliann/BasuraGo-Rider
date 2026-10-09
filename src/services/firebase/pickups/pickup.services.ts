@@ -26,7 +26,14 @@ export async function getAvailablePickups(): Promise<Pickup[]> {
 
   const snapshot = await getDocs(pickupsQuery);
 
-  return snapshot.docs.map((pickupDoc) => {
+  return snapshot.docs
+    .filter((pickupDoc) => {
+      const data = pickupDoc.data();
+      return typeof data.facilityId === 'string' &&
+        typeof data.facilityName === 'string' &&
+        typeof data.facilityAddress === 'string';
+    })
+    .map((pickupDoc) => {
     const data = pickupDoc.data();
 
     return {
@@ -48,6 +55,19 @@ export async function getAvailablePickups(): Promise<Pickup[]> {
 
       status: data.status ?? 'pending',
 
+      facilityId:
+        typeof data.facilityId === 'string'
+          ? data.facilityId
+          : undefined,
+      facilityName:
+        typeof data.facilityName === 'string'
+          ? data.facilityName
+          : undefined,
+      facilityAddress:
+        typeof data.facilityAddress === 'string'
+          ? data.facilityAddress
+          : undefined,
+
       riderId: data.riderId ?? null,
       vehicleId: data.vehicleId ?? null,
 
@@ -57,7 +77,7 @@ export async function getAvailablePickups(): Promise<Pickup[]> {
       createdAt: data.createdAt,
       updatedAt: data.updatedAt,
     };
-  });
+    });
 }
 
 export async function getPickupById(
@@ -95,6 +115,19 @@ export async function getPickupById(
     scheduledTime: data.scheduledTime ?? '',
 
     status: data.status ?? 'pending',
+
+    facilityId:
+      typeof data.facilityId === 'string'
+        ? data.facilityId
+        : undefined,
+    facilityName:
+      typeof data.facilityName === 'string'
+        ? data.facilityName
+        : undefined,
+    facilityAddress:
+      typeof data.facilityAddress === 'string'
+        ? data.facilityAddress
+        : undefined,
 
     riderId: data.riderId ?? null,
     vehicleId: data.vehicleId ?? null,
@@ -155,6 +188,19 @@ export async function getMyPickups(
 
       status:
         data.status ?? 'pending',
+
+      facilityId:
+        typeof data.facilityId === 'string'
+          ? data.facilityId
+          : undefined,
+      facilityName:
+        typeof data.facilityName === 'string'
+          ? data.facilityName
+          : undefined,
+      facilityAddress:
+        typeof data.facilityAddress === 'string'
+          ? data.facilityAddress
+          : undefined,
 
       riderId:
         data.riderId ?? null,
@@ -224,6 +270,19 @@ export async function getPickupHistory(
       status:
         data.status ?? 'completed',
 
+      facilityId:
+        typeof data.facilityId === 'string'
+          ? data.facilityId
+          : undefined,
+      facilityName:
+        typeof data.facilityName === 'string'
+          ? data.facilityName
+          : undefined,
+      facilityAddress:
+        typeof data.facilityAddress === 'string'
+          ? data.facilityAddress
+          : undefined,
+
       riderId:
         data.riderId ?? null,
       vehicleId:
@@ -240,95 +299,6 @@ export async function getPickupHistory(
         data.updatedAt,
     };
   });
-}
-
-export async function acceptPickup(
-  pickupId: string,
-  riderId: string,
-  vehicleId: string,
-): Promise<void> {
-  const pickupRef = doc(
-    db,
-    'pickups',
-    pickupId,
-  );
-
-  const riderRef = doc(
-    db,
-    'riders',
-    riderId,
-  );
-
-  await runTransaction(
-    db,
-    async (transaction) => {
-      const pickupSnapshot =
-        await transaction.get(
-          pickupRef,
-        );
-
-      const riderSnapshot =
-        await transaction.get(
-          riderRef,
-        );
-
-      if (!pickupSnapshot.exists()) {
-        throw new Error(
-          'Pickup not found.',
-        );
-      }
-
-      if (!riderSnapshot.exists()) {
-        throw new Error(
-          'Rider profile not found.',
-        );
-      }
-
-      const pickupData =
-        pickupSnapshot.data();
-
-      const riderData =
-        riderSnapshot.data();
-
-      if (
-        pickupData.status !==
-        'pending'
-      ) {
-        throw new Error(
-          'This pickup is no longer available.',
-        );
-      }
-
-      if (
-        riderData.status !==
-        'active'
-      ) {
-        throw new Error(
-          'Your rider account is not active.',
-        );
-      }
-
-      if (
-        riderData.vehicleId !==
-        vehicleId
-      ) {
-        throw new Error(
-          'This vehicle is not assigned to you.',
-        );
-      }
-
-      transaction.update(
-        pickupRef,
-        {
-          riderId,
-          vehicleId,
-          status: 'accepted',
-          updatedAt:
-            serverTimestamp(),
-        },
-      );
-    },
-  );
 }
 
 export async function startPickup(
