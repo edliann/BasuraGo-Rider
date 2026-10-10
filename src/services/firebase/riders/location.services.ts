@@ -1,14 +1,13 @@
+
 import {
-  collection,
   doc,
+  GeoPoint,
   getFirestore,
   serverTimestamp,
   setDoc,
 } from 'firebase/firestore';
 
 import app from '../firebase';
-
-import type { RiderLocation } from './location.types';
 
 const db = getFirestore(app);
 
@@ -19,27 +18,21 @@ export async function saveRiderLocation(
   accuracy: number | null,
 ): Promise<string> {
   const locationRef = doc(
-    collection(
-      db,
-      'riders',
-      riderId,
-      'location',
-    ),
+    db,
+    'riders',
+    riderId,
+    'location',
+    'current',
   );
-
-  const location: Omit<
-    RiderLocation,
-    'id'
-  > = {
-    latitude,
-    longitude,
-    accuracy,
-    timestamp: serverTimestamp(),
-  };
 
   await setDoc(
     locationRef,
-    location,
+    {
+      location: new GeoPoint(latitude, longitude),
+      accuracy,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
   );
 
   return locationRef.id;
