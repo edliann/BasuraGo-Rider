@@ -40,6 +40,17 @@ export default function Dashboard() {
   const [onlineStatusLoading, setOnlineStatusLoading] = useState(false);
   const [locationTracking, setLocationTracking] = useState(false);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const sectionPositions = useRef<Partial<Record<RiderNavSection, number>>>({});
+  const [activeSection, setActiveSection] = useState<RiderNavSection>('home');
+
+  function handleNavSelect(section: RiderNavSection) {
+    setActiveSection(section);
+    const y = section === 'home' ? 0 : sectionPositions.current[section];
+    if (y !== undefined) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    }
+  }
 
   useEffect(() => {
     setIsOnline(rider?.isOnline ?? false);
@@ -214,7 +225,9 @@ export default function Dashboard() {
   const firstName = rider.fullName?.trim().split(/\s+/)[0] || 'Rider';
 
   return (
+    <View style={styles.screen}>
     <ScrollView
+      ref={scrollRef}
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -309,7 +322,7 @@ export default function Dashboard() {
         </Pressable>
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.section} onLayout={(event) => { sectionPositions.current.available = event.nativeEvent.layout.y; }}>
         <View style={styles.sectionHeading}>
           <Text style={styles.sectionTitle}>Available pickups</Text>
           <View style={styles.countPill}><Text style={styles.countPillText}>{pickupsLoading ? '…' : pickups.length}</Text></View>
@@ -330,7 +343,7 @@ export default function Dashboard() {
         ))}
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.section} onLayout={(event) => { sectionPositions.current.mine = event.nativeEvent.layout.y; }}>
         <View style={styles.sectionHeading}>
           <Text style={styles.sectionTitle}>My pickups</Text>
           <View style={styles.countPill}><Text style={styles.countPillText}>{myPickupsLoading ? '…' : activeCount}</Text></View>
@@ -351,7 +364,7 @@ export default function Dashboard() {
         ))}
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.section} onLayout={(event) => { sectionPositions.current.history = event.nativeEvent.layout.y; }}>
         <View style={styles.sectionHeading}>
           <Text style={styles.sectionTitle}>Pickup history</Text>
           <View style={styles.countPill}><Text style={styles.countPillText}>{historyLoading ? '…' : completedCount}</Text></View>
@@ -387,12 +400,15 @@ export default function Dashboard() {
       </Pressable>
       <Text style={styles.footerText}>BasuraGo Rider · Collect responsibly</Text>
     </ScrollView>
+    <BottomNav activeSection={activeSection} onSelect={handleNavSelect} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#F5F8F5' },
   container: { flex: 1, backgroundColor: '#F5F8F5' },
-  content: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 40 },
+  content: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 150 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#F5F8F5' },
   loadingText: { marginTop: 12, color: '#64756A', fontSize: 14 },
   errorText: { color: '#B42318', fontSize: 15, textAlign: 'center' },
