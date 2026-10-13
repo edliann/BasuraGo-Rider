@@ -1,227 +1,96 @@
-import {
-  Alert,
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRef, useState } from 'react';
-
+import { router } from 'expo-router';
 import type { Pickup } from '../../services/firebase/pickups/pickup.types';
+import { acceptPickup } from '../../services/firebase/pickups/pickup-acceptance.services';
+import { MOCK_PICKUP_MODE } from '../../dev/mockPickups';
 
-import {
-  acceptPickup,
-} from '../../services/firebase/pickups/pickup-acceptance.services';
+interface PickupCardProps { pickup: Pickup; onAccepted: () => void; }
 
-interface PickupCardProps {
-  pickup: Pickup;
-  onAccepted: () => void;
-}
-
-export default function PickupCard({
-  pickup,
-  onAccepted,
-}: PickupCardProps) {
+export default function PickupCard({ pickup, onAccepted }: PickupCardProps) {
   const [isAccepting, setIsAccepting] = useState(false);
-  const acceptingRef = useRef(false);
+  const lock = useRef(false);
 
   async function handleAccept() {
-    if (acceptingRef.current) {
-      return;
-    }
-
-    acceptingRef.current = true;
+    if (lock.current) return;
+    lock.current = true;
     setIsAccepting(true);
-
     try {
       await acceptPickup(pickup.id);
-
-      Alert.alert(
-        'Pickup Accepted',
-        'This pickup has been added to your assigned pickups.',
-      );
-
+      Alert.alert('Pickup Accepted', MOCK_PICKUP_MODE ? 'Demo only: this change is held in memory and is not saved to Firebase.' : 'This pickup has been added to your assigned pickups.');
       onAccepted();
     } catch (error) {
-      console.error(
-        'Failed to accept pickup:',
-        error,
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to accept this pickup.';
-
-      Alert.alert(
-        'Unable to Accept Pickup',
-        message,
-      );
+      console.error('Failed to accept pickup:', error);
+      Alert.alert('Unable to Accept Pickup', error instanceof Error ? error.message : 'Please try again.');
     } finally {
-      acceptingRef.current = false;
+      lock.current = false;
       setIsAccepting(false);
     }
   }
 
+  function openDetails() {
+    router.push({ pathname: '/pickup-details', params: { pickupId: pickup.id } });
+  }
+
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>
-        Available Pickup
-      </Text>
-
-      <View style={styles.divider} />
-
-      <Text style={styles.label}>
-        Customer
-      </Text>
-
-      <Text style={styles.value}>
-        {pickup.customerName ||
-          'Customer information unavailable'}
-      </Text>
-
-      <Text style={styles.label}>
-        Pickup Address
-      </Text>
-
-      <Text style={styles.value}>
-        {pickup.pickupAddress ||
-          'Address information unavailable'}
-      </Text>
-
-      <Text style={styles.label}>
-        Assigned Facility
-      </Text>
-
-      <Text style={styles.value}>
-        {pickup.facilityName && pickup.facilityAddress
-          ? `${pickup.facilityName} — ${pickup.facilityAddress}`
-          : 'Facility destination unavailable'}
-      </Text>
-
-      <Text style={styles.label}>
-        Waste Type
-      </Text>
-
-      <Text style={styles.value}>
-        {pickup.wasteTypeName ||
-          'Waste type unavailable'}
-      </Text>
-
-      <Text style={styles.label}>
-        Estimated Weight
-      </Text>
-
-      <Text style={styles.value}>
-        {pickup.estimatedWeight} kg
-      </Text>
-
-      <Text style={styles.label}>
-        Schedule
-      </Text>
-
-      <Text style={styles.value}>
-        {pickup.scheduledDate} •{' '}
-        {pickup.scheduledTime}
-      </Text>
-
-      {pickup.notes && (
-        <>
-          <Text style={styles.label}>
-            Notes
-          </Text>
-
-          <Text style={styles.value}>
-            {pickup.notes}
-          </Text>
-        </>
-      )}
-
-      <Pressable
-        style={[
-          styles.acceptButton,
-          isAccepting && styles.acceptButtonDisabled,
-        ]}
-        onPress={handleAccept}
-        disabled={isAccepting}
-      >
-        {isAccepting ? (
-          <View style={styles.acceptingContent}>
-            <ActivityIndicator color="#ffffff" />
-            <Text
-              style={[
-                styles.acceptButtonText,
-                styles.acceptingLabel,
-              ]}
-            >
-              Accepting...
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.acceptButtonText}>
-            Accept Pickup
-          </Text>
-        )}
-      </Pressable>
+      {MOCK_PICKUP_MODE ? <View style={styles.demoBanner}><Text style={styles.demoText}>DEMO DATA · NOT SAVED</Text></View> : null}
+      <View style={styles.top}>
+        <View style={styles.icon}><Text style={styles.iconText}>＋</Text></View>
+        <View style={styles.heading}>
+          <Text style={styles.eyebrow}>NEW REQUEST</Text>
+          <Text style={styles.customer} numberOfLines={1}>{pickup.customerName || 'Customer unavailable'}</Text>
+        </View>
+        <View style={styles.badge}><View style={styles.dot} /><Text style={styles.badgeText}>Available</Text></View>
+      </View>
+      <View style={styles.addressBox}><Text style={styles.pin}>⌖</Text><Text style={styles.address}>{pickup.pickupAddress || 'Pickup address unavailable'}</Text></View>
+      <View style={styles.detailsRow}>
+        <View style={styles.detail}><Text style={styles.label}>SCHEDULE</Text><Text style={styles.value}>{pickup.scheduledDate || 'Not set'}</Text><Text style={styles.muted}>{pickup.scheduledTime || 'Time not set'}</Text></View>
+        <View style={styles.divider} />
+        <View style={styles.detail}><Text style={styles.label}>WASTE TYPE</Text><Text style={styles.value}>{pickup.wasteTypeName || 'Not specified'}</Text><Text style={styles.muted}>{pickup.estimatedWeight ?? 0} kg estimated</Text></View>
+      </View>
+      {pickup.facilityName ? <View style={styles.facility}><Text style={styles.label}>DESTINATION FACILITY</Text><Text style={styles.value}>{pickup.facilityName}</Text><Text style={styles.muted}>{pickup.facilityAddress}</Text></View> : null}
+      {pickup.notes ? <View style={styles.notes}><Text style={styles.label}>NOTES</Text><Text style={styles.noteText}>{pickup.notes}</Text></View> : null}
+      <View style={styles.actions}>
+        <Pressable style={styles.secondaryButton} onPress={openDetails}><Text style={styles.secondaryText}>View details</Text></Pressable>
+        <Pressable style={[styles.acceptButton, isAccepting && styles.disabled]} onPress={handleAccept} disabled={isAccepting}>
+          {isAccepting ? <View style={styles.accepting}><ActivityIndicator color="#FFFFFF" size="small" /><Text style={styles.acceptText}>Accepting…</Text></View> : <Text style={styles.acceptText}>Accept pickup</Text>}
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: 16,
-    padding: 18,
-    borderRadius: 16,
-    backgroundColor: '#f5f5f5',
-  },
-
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-
-  divider: {
-    height: 1,
-    marginVertical: 14,
-    backgroundColor: '#dddddd',
-  },
-
-  label: {
-    marginTop: 12,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  value: {
-    marginTop: 4,
-    fontSize: 16,
-  },
-
-  acceptButton: {
-    marginTop: 20,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    backgroundColor: '#1b5e20',
-  },
-
-  acceptButtonDisabled: {
-    opacity: 0.7,
-  },
-
-  acceptingContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  acceptingLabel: {
-    marginLeft: 8,
-  },
-
-  acceptButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
+  card: { marginBottom: 13, padding: 16, borderRadius: 19, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4ECE5' },
+  demoBanner: { alignSelf: 'flex-start', marginBottom: 12, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, backgroundColor: '#FFF1CC' },
+  demoText: { color: '#8A5B10', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  icon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F5EC' },
+  iconText: { color: '#176B43', fontSize: 22, fontWeight: '800' },
+  heading: { flex: 1, minWidth: 0 },
+  eyebrow: { color: '#87948A', fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  customer: { marginTop: 4, color: '#24342A', fontSize: 14, fontWeight: '800' },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 7, borderRadius: 9, backgroundColor: '#E8F5EC' },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#167647' },
+  badgeText: { color: '#176B43', fontSize: 9, fontWeight: '800' },
+  addressBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 16, padding: 12, borderRadius: 12, backgroundColor: '#F6F9F6' },
+  pin: { color: '#167647', fontSize: 18, fontWeight: '800' },
+  address: { flex: 1, color: '#435248', fontSize: 12, lineHeight: 18, fontWeight: '600' },
+  detailsRow: { flexDirection: 'row', marginTop: 16, marginBottom: 14 },
+  detail: { flex: 1, minWidth: 0 },
+  divider: { width: 1, marginHorizontal: 13, backgroundColor: '#E9EEEA' },
+  label: { color: '#87948A', fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  value: { marginTop: 6, color: '#28382D', fontSize: 12, fontWeight: '800' },
+  muted: { marginTop: 3, color: '#7B887F', fontSize: 10 },
+  facility: { paddingTop: 12, borderTopWidth: 1, borderTopColor: '#EEF2EF' },
+  notes: { marginTop: 12, padding: 11, borderRadius: 10, backgroundColor: '#FFF9E9' },
+  noteText: { marginTop: 5, color: '#6D5A32', fontSize: 11, lineHeight: 17 },
+  actions: { flexDirection: 'row', gap: 9, marginTop: 15 },
+  secondaryButton: { flex: 1, minHeight: 43, alignItems: 'center', justifyContent: 'center', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#DCE7DE' },
+  secondaryText: { color: '#176B43', fontSize: 11, fontWeight: '800' },
+  acceptButton: { flex: 1, minHeight: 43, alignItems: 'center', justifyContent: 'center', padding: 10, borderRadius: 12, backgroundColor: '#167647' },
+  disabled: { opacity: 0.65 },
+  accepting: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  acceptText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
 });
