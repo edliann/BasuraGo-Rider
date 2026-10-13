@@ -13,46 +13,25 @@ import {
   getMyPickups,
   getPickupHistory,
 } from '../../services/firebase/pickups/pickup.services';
-import MyPickupCard from '../../components/pickups/MyPickupCard';
-import PickupHistoryCard from '../../components/pickups/PickupHistoryCard';
 import { updateRiderOnlineStatus } from '../../services/firebase/riders/riders.services';
-import type { Pickup } from '../../services/firebase/pickups/pickup.types';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext/AuthContext';
 import { logout } from '../../services/firebase/auth/auth.services';
-import PickupCard from '../../components/pickups/PickupCard';
 import * as Location from 'expo-location';
 import { saveRiderLocation } from '../../services/firebase/riders/location.services';
-import BottomNav, { type RiderNavSection } from '../../components/common/BottomNav';
+import BottomNav from '../../components/common/BottomNav';
 
 export default function Dashboard() {
   const { rider, loading } = useAuth();
 
-  const [pickups, setPickups] = useState<Pickup[]>([]);
-  const [myPickups, setMyPickups] = useState<Pickup[]>([]);
+  const [pickupsCount, setPickupsCount] = useState(0);
+  const [myPickupsCount, setMyPickupsCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
   const [pickupsLoading, setPickupsLoading] = useState(true);
-  const [myPickupsLoading, setMyPickupsLoading] = useState(true);
-  const [pickupError, setPickupError] = useState('');
-  const [myPickupError, setMyPickupError] = useState('');
-  const [pickupHistory, setPickupHistory] = useState<Pickup[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState('');
   const [isOnline, setIsOnline] = useState(rider?.isOnline ?? false);
   const [onlineStatusLoading, setOnlineStatusLoading] = useState(false);
   const [locationTracking, setLocationTracking] = useState(false);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
-  const scrollRef = useRef<ScrollView | null>(null);
-  const sectionPositions = useRef<Partial<Record<RiderNavSection, number>>>({});
-  const [activeSection, setActiveSection] = useState<RiderNavSection>('home');
-
-  function handleNavSelect(section: RiderNavSection) {
-    setActiveSection(section);
-    const y = section === 'home' ? 0 : sectionPositions.current[section];
-    if (y !== undefined) {
-      scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-    }
-  }
-
   useEffect(() => {
     setIsOnline(rider?.isOnline ?? false);
   }, [rider]);
@@ -84,30 +63,18 @@ export default function Dashboard() {
 
     try {
       setPickupsLoading(true);
-      setMyPickupsLoading(true);
-      setHistoryLoading(true);
-      setPickupError('');
-      setMyPickupError('');
-      setHistoryError('');
-
       const [availablePickups, assignedPickups, completedPickups] = await Promise.all([
         getAvailablePickups(),
         getMyPickups(rider.id),
         getPickupHistory(rider.id),
       ]);
-
-      setPickups(availablePickups);
-      setMyPickups(assignedPickups.filter((pickup) => pickup.status !== 'completed'));
-      setPickupHistory(completedPickups);
+      setPickupsCount(availablePickups.length);
+      setMyPickupsCount(assignedPickups.filter((pickup) => pickup.status !== 'completed').length);
+      setCompletedCount(completedPickups.length);
     } catch (error) {
-      console.error('Failed to load pickups:', error);
-      setPickupError('Failed to load available pickups.');
-      setMyPickupError('Failed to load assigned pickups.');
-      setHistoryError('Failed to load pickup history.');
+      console.error('Failed to load dashboard pickup counts:', error);
     } finally {
       setPickupsLoading(false);
-      setMyPickupsLoading(false);
-      setHistoryLoading(false);
     }
   }
 
@@ -221,14 +188,11 @@ export default function Dashboard() {
     );
   }
 
-  const activeCount = myPickups.length;
-  const completedCount = pickupHistory.length;
-  const firstName = rider.fullName?.trim().split(/\s+/)[0] || 'Rider';
+    const firstName = rider.fullName?.trim().split(/\s+/)[0] || 'Rider';
 
   return (
     <View style={styles.screen}>
     <ScrollView
-      ref={scrollRef}
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -323,67 +287,28 @@ export default function Dashboard() {
         </Pressable>
       </View>
 
-      <View style={styles.section} onLayout={(event) => { sectionPositions.current.available = event.nativeEvent.layout.y; }}>
+      <View style={styles.servicesSection}>
         <View style={styles.sectionHeading}>
-          <Text style={styles.sectionTitle}>Available pickups</Text>
-          <View style={styles.countPill}><Text style={styles.countPillText}>{pickupsLoading ? '…' : pickups.length}</Text></View>
+          <Text style={styles.sectionTitle}>Pickup Services</Text>
+          <Text style={styles.sectionHint}>Choose a service to get started</Text>
         </View>
-        <Text style={styles.sectionHint}>Requests waiting for a rider</Text>
-
-        {pickupsLoading && <ActivityIndicator color="#167647" style={styles.loader} />}
-        {!pickupsLoading && pickupError !== '' && <Text style={styles.inlineError}>{pickupError}</Text>}
-        {!pickupsLoading && pickupError === '' && pickups.length === 0 && (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>♻</Text>
-            <Text style={styles.emptyTitle}>All caught up</Text>
-            <Text style={styles.emptyText}>There are no available pickups right now. Check back soon.</Text>
-          </View>
-        )}
-        {pickups.map((pickup) => (
-          <PickupCard key={pickup.id} pickup={pickup} onAccepted={loadPickups} />
-        ))}
-      </View>
-
-      <View style={styles.section} onLayout={(event) => { sectionPositions.current.mine = event.nativeEvent.layout.y; }}>
-        <View style={styles.sectionHeading}>
-          <Text style={styles.sectionTitle}>My pickups</Text>
-          <View style={styles.countPill}><Text style={styles.countPillText}>{myPickupsLoading ? '…' : activeCount}</Text></View>
+        <View style={styles.serviceGrid}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open available pickups" style={({ pressed }) => [styles.serviceCard, pressed && styles.servicePressed]} onPress={() => router.push('/available-pickups')}>
+            <View style={styles.serviceIcon}><Text style={styles.serviceIconText}>♻</Text></View>
+            <Text style={styles.serviceTitle}>Available</Text>
+            <Text style={styles.serviceSubtitle}>{pickupsLoading ? 'Loading…' : `${pickupsCount} requests`}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open my pickups" style={({ pressed }) => [styles.serviceCard, pressed && styles.servicePressed]} onPress={() => router.push('/my-pickups')}>
+            <View style={styles.serviceIcon}><Text style={styles.serviceIconText}>▤</Text></View>
+            <Text style={styles.serviceTitle}>My Pickups</Text>
+            <Text style={styles.serviceSubtitle}>{pickupsLoading ? 'Loading…' : `${myPickupsCount} active`}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open pickup history" style={({ pressed }) => [styles.serviceCard, pressed && styles.servicePressed]} onPress={() => router.push('/pickup-history')}>
+            <View style={styles.serviceIcon}><Text style={styles.serviceIconText}>✓</Text></View>
+            <Text style={styles.serviceTitle}>History</Text>
+            <Text style={styles.serviceSubtitle}>{pickupsLoading ? 'Loading…' : `${completedCount} completed`}</Text>
+          </Pressable>
         </View>
-        <Text style={styles.sectionHint}>Track the collections assigned to you</Text>
-
-        {myPickupsLoading && <ActivityIndicator color="#167647" style={styles.loader} />}
-        {!myPickupsLoading && myPickupError !== '' && <Text style={styles.inlineError}>{myPickupError}</Text>}
-        {!myPickupsLoading && myPickupError === '' && myPickups.length === 0 && (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>▣</Text>
-            <Text style={styles.emptyTitle}>No active pickups</Text>
-            <Text style={styles.emptyText}>Accepted and in-progress collections will appear here.</Text>
-          </View>
-        )}
-        {!myPickupsLoading && myPickupError === '' && myPickups.map((pickup) => (
-          <MyPickupCard key={pickup.id} pickup={pickup} riderId={rider.id} onStarted={loadPickups} />
-        ))}
-      </View>
-
-      <View style={styles.section} onLayout={(event) => { sectionPositions.current.history = event.nativeEvent.layout.y; }}>
-        <View style={styles.sectionHeading}>
-          <Text style={styles.sectionTitle}>Pickup history</Text>
-          <View style={styles.countPill}><Text style={styles.countPillText}>{historyLoading ? '…' : completedCount}</Text></View>
-        </View>
-        <Text style={styles.sectionHint}>Your recently completed collections</Text>
-
-        {historyLoading && <ActivityIndicator color="#167647" style={styles.loader} />}
-        {!historyLoading && historyError !== '' && <Text style={styles.inlineError}>{historyError}</Text>}
-        {!historyLoading && historyError === '' && pickupHistory.length === 0 && (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>✓</Text>
-            <Text style={styles.emptyTitle}>Your history starts here</Text>
-            <Text style={styles.emptyText}>Completed pickups will be saved here for easy reference.</Text>
-          </View>
-        )}
-        {!historyLoading && historyError === '' && pickupHistory.map((pickup) => (
-          <PickupHistoryCard key={pickup.id} pickup={pickup} />
-        ))}
       </View>
 
       <View style={styles.profileCard}>
@@ -401,7 +326,7 @@ export default function Dashboard() {
       </Pressable>
       <Text style={styles.footerText}>BasuraGo Rider · Collect responsibly</Text>
     </ScrollView>
-    <BottomNav activeSection={activeSection} onSelect={handleNavSelect} />
+    <BottomNav />
     </View>
   );
 }
@@ -455,6 +380,14 @@ const styles = StyleSheet.create({
 
   quickActions: { marginTop: 27 },
   section: { marginTop: 28 },
+  servicesSection: { marginTop: 27 },
+  serviceGrid: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  serviceCard: { flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 8, paddingVertical: 16, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4ECE5' },
+  servicePressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
+  serviceIcon: { width: 49, height: 49, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F5EC' },
+  serviceIconText: { color: '#176744', fontSize: 25, fontWeight: '800' },
+  serviceTitle: { marginTop: 11, color: '#25352A', fontSize: 11, fontWeight: '800', textAlign: 'center' },
+  serviceSubtitle: { marginTop: 5, color: '#7A887E', fontSize: 9, textAlign: 'center' },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   sectionTitle: { color: '#1A2B20', fontSize: 20, fontWeight: '800', letterSpacing: -0.45 },
   sectionHint: { marginTop: 5, marginBottom: 13, color: '#7A887E', fontSize: 12, lineHeight: 17 },
