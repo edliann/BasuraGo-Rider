@@ -8,6 +8,7 @@ import PickupCard from './PickupCard';
 import MyPickupCard from './MyPickupCard';
 import PickupHistoryCard from './PickupHistoryCard';
 import BottomNav from '../common/BottomNav';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export type PickupListMode = 'available' | 'mine' | 'history';
 
@@ -52,7 +53,7 @@ export default function PickupListScreen({ mode }: { mode: PickupListMode }) {
   const copy = pageCopy[mode];
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.canGoBack() ? router.back() : router.replace('/dashboard')} style={styles.backButton}>
@@ -85,7 +86,7 @@ export default function PickupListScreen({ mode }: { mode: PickupListMode }) {
         })}
       </ScrollView>
       <BottomNav />
-    </View>
+    </SafeAreaView>
   );
 }
 
