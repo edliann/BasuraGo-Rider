@@ -23,6 +23,7 @@ import { logout } from '../../services/firebase/auth/auth.services';
 import PickupCard from '../../components/pickups/PickupCard';
 import * as Location from 'expo-location';
 import { saveRiderLocation } from '../../services/firebase/riders/location.services';
+import BottomNav, { type RiderNavSection } from '../../components/common/BottomNav';
 
 export default function Dashboard() {
   const { rider, loading } = useAuth();
