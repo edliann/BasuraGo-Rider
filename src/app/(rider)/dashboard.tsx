@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext/AuthContext';
 import { logout } from '../../services/firebase/auth/auth.services';
 import * as Location from 'expo-location';
 import { saveRiderLocation } from '../../services/firebase/riders/location.services';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNav from '../../components/common/BottomNav';
 
 export default function Dashboard() {
@@ -191,7 +192,7 @@ export default function Dashboard() {
     const firstName = rider.fullName?.trim().split(/\s+/)[0] || 'Rider';
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -327,7 +328,7 @@ export default function Dashboard() {
       <Text style={styles.footerText}>BasuraGo Rider · Collect responsibly</Text>
     </ScrollView>
     <BottomNav />
-    </View>
+    </SafeAreaView>
   );
 }
 
