@@ -288,7 +288,7 @@ export default function Dashboard() {
       </View>
 
       <View style={styles.servicesSection}>
-        <View style={styles.sectionHeading}>
+        <View style={styles.serviceHeading}>
           <Text style={styles.sectionTitle}>Pickup Services</Text>
           <Text style={styles.sectionHint}>Choose a service to get started</Text>
         </View>
@@ -381,6 +381,7 @@ const styles = StyleSheet.create({
   quickActions: { marginTop: 27 },
   section: { marginTop: 28 },
   servicesSection: { marginTop: 27 },
+  serviceHeading: { flexDirection: 'column', alignItems: 'flex-start', gap: 3 },
   serviceGrid: { flexDirection: 'row', gap: 10, marginTop: 14 },
   serviceCard: { flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 8, paddingVertical: 16, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4ECE5' },
   servicePressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
