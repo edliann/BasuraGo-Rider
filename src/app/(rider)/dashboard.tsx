@@ -312,15 +312,17 @@ export default function Dashboard() {
         </View>
       </View>
 
-      <View style={styles.profileCard}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Open rider account profile" onPress={() => router.push('/account')} style={({ pressed }) => [styles.profileCard, pressed && styles.servicePressed]}>
         <View style={styles.profileInitial}><Text style={styles.profileInitialText}>{firstName.charAt(0).toUpperCase()}</Text></View>
         <View style={styles.profileCopy}>
           <Text style={styles.profileName}>{rider.fullName}</Text>
           <Text style={styles.profileMeta}>{rider.phoneNumber || 'No phone number added'}</Text>
           <Text style={styles.profileMeta}>Vehicle: {rider.vehicleId || 'Not assigned'}</Text>
+          <Text style={styles.profileMeta}>Tap to manage your account</Text>
         </View>
         <View style={styles.profileStatus}><Text style={styles.profileStatusText}>{rider.status}</Text></View>
-      </View>
+        <Text style={styles.actionChevron}>›</Text>
+      </Pressable>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
         <Text style={styles.logoutText}>Sign out of BasuraGo</Text>
