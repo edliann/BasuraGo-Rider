@@ -255,17 +255,17 @@ export default function Dashboard() {
       <View style={styles.statsRow}>
         <View style={[styles.statCard, styles.statCardPrimary]}>
           <View style={styles.statIconWrap}><Text style={styles.statIcon}>↗</Text></View>
-          <Text style={styles.statNumber}>{pickupsLoading ? '—' : pickups.length}</Text>
+          <Text style={styles.statNumber}>{pickupsLoading ? '—' : pickupsCount}</Text>
           <Text style={styles.statLabel}>Available jobs</Text>
         </View>
         <View style={styles.statCard}>
           <View style={[styles.statIconWrap, styles.statIconWrapSoft]}><Text style={styles.statIconSoft}>▣</Text></View>
-          <Text style={styles.statNumberDark}>{myPickupsLoading ? '—' : activeCount}</Text>
+          <Text style={styles.statNumberDark}>{pickupsLoading ? '—' : myPickupsCount}</Text>
           <Text style={styles.statLabelDark}>My active pickups</Text>
         </View>
         <View style={styles.statCard}>
           <View style={[styles.statIconWrap, styles.statIconWrapSoft]}><Text style={styles.statIconSoft}>✓</Text></View>
-          <Text style={styles.statNumberDark}>{historyLoading ? '—' : completedCount}</Text>
+          <Text style={styles.statNumberDark}>{pickupsLoading ? '—' : completedCount}</Text>
           <Text style={styles.statLabelDark}>Completed</Text>
         </View>
       </View>
