@@ -74,3 +74,16 @@ export async function updateRiderOnlineStatus(
     updatedAt: serverTimestamp(),
   });
 }
+
+export async function updateRiderProfile(
+  riderId: string,
+  data: { fullName: string; phoneNumber: string },
+): Promise<void> {
+  const riderRef = doc(db, 'riders', riderId);
+
+  await updateDoc(riderRef, {
+    fullName: data.fullName.trim(),
+    phoneNumber: data.phoneNumber.trim(),
+    updatedAt: serverTimestamp(),
+  });
+}
