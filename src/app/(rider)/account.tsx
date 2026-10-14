@@ -42,7 +42,7 @@ export default function RiderAccountScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹  Back</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => {if ( router.canGoBack()) { router.back(); } else { router.replace('/dashboard');}}} style={styles.backButton}><Text style={styles.backText}>‹  Back</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Open settings" onPress={() => router.push('/settings')} style={styles.settingsButton}><Text style={styles.settingsIcon}>⚙</Text></Pressable>
         </View>
         <Text style={styles.eyebrow}>BASURAGO RIDER ACCOUNT</Text>

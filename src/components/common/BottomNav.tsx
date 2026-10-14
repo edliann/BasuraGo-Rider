@@ -8,6 +8,7 @@ const items: NavItem[] = [
   { path: '/available-pickups', label: 'Available', symbol: '♻', matches: (path) => path === '/available-pickups' },
   { path: '/my-pickups', label: 'My Pickups', symbol: '▤', matches: (path) => path === '/my-pickups' },
   { path: '/pickup-history', label: 'History', symbol: '✓', matches: (path) => path === '/pickup-history' },
+  { path: '/account', label: 'Account', symbol: '●', matches: (path) => path === '/account' },
 ];
 
 export default function BottomNav() {
