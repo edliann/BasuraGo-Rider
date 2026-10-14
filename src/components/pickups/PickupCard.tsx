@@ -1,6 +1,5 @@
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRef, useState } from 'react';
-import { router } from 'expo-router';
 import type { Pickup } from '../../services/firebase/pickups/pickup.types';
 import { acceptPickup } from '../../services/firebase/pickups/pickup-acceptance.services';
 import { MOCK_PICKUP_MODE } from '../../dev/mockPickups';
@@ -28,10 +27,6 @@ export default function PickupCard({ pickup, onAccepted }: PickupCardProps) {
     }
   }
 
-  function openDetails() {
-    router.push({ pathname: '/pickup-details', params: { pickupId: pickup.id } });
-  }
-
   return (
     <View style={styles.card}>
       {MOCK_PICKUP_MODE ? <View style={styles.demoBanner}><Text style={styles.demoText}>DEMO DATA · NOT SAVED</Text></View> : null}
@@ -39,20 +34,18 @@ export default function PickupCard({ pickup, onAccepted }: PickupCardProps) {
         <View style={styles.icon}><Text style={styles.iconText}>＋</Text></View>
         <View style={styles.heading}>
           <Text style={styles.eyebrow}>NEW REQUEST</Text>
-          <Text style={styles.customer} numberOfLines={1}>{pickup.customerName || 'Customer unavailable'}</Text>
+          <Text style={styles.customer} numberOfLines={1}>Customer details after acceptance</Text>
         </View>
         <View style={styles.badge}><View style={styles.dot} /><Text style={styles.badgeText}>Available</Text></View>
       </View>
-      <View style={styles.addressBox}><Text style={styles.pin}>⌖</Text><Text style={styles.address}>{pickup.pickupAddress || 'Pickup address unavailable'}</Text></View>
+      <View style={styles.addressBox}><Text style={styles.pin}>⌖</Text><Text style={styles.address}>{pickup.pickupLocation ? 'Pickup coordinates available on map' : 'Pickup coordinates unavailable'}</Text></View>
       <View style={styles.detailsRow}>
         <View style={styles.detail}><Text style={styles.label}>SCHEDULE</Text><Text style={styles.value}>{pickup.scheduledDate || 'Not set'}</Text><Text style={styles.muted}>{pickup.scheduledTime || 'Time not set'}</Text></View>
         <View style={styles.divider} />
         <View style={styles.detail}><Text style={styles.label}>WASTE TYPE</Text><Text style={styles.value}>{pickup.wasteTypeName || 'Not specified'}</Text><Text style={styles.muted}>{pickup.estimatedWeight ?? 0} kg estimated</Text></View>
       </View>
       {pickup.facilityName ? <View style={styles.facility}><Text style={styles.label}>DESTINATION FACILITY</Text><Text style={styles.value}>{pickup.facilityName}</Text><Text style={styles.muted}>{pickup.facilityAddress}</Text></View> : null}
-      {pickup.notes ? <View style={styles.notes}><Text style={styles.label}>NOTES</Text><Text style={styles.noteText}>{pickup.notes}</Text></View> : null}
       <View style={styles.actions}>
-        <Pressable style={styles.secondaryButton} onPress={openDetails}><Text style={styles.secondaryText}>View details</Text></Pressable>
         <Pressable style={[styles.acceptButton, isAccepting && styles.disabled]} onPress={handleAccept} disabled={isAccepting}>
           {isAccepting ? <View style={styles.accepting}><ActivityIndicator color="#FFFFFF" size="small" /><Text style={styles.acceptText}>Accepting…</Text></View> : <Text style={styles.acceptText}>Accept pickup</Text>}
         </Pressable>

@@ -8,6 +8,10 @@ export interface Pickup {
   // Display information stored on the pickup.
   customerName: string;
   pickupAddress: string;
+  pickupLocation?: {
+    latitude: number;
+    longitude: number;
+  } | null;
   wasteTypeName: string;
 
   estimatedWeight: number;

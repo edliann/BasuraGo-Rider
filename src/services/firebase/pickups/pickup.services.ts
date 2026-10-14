@@ -2,6 +2,7 @@ import {
   collection, doc, getDocs, getDoc, getFirestore, query,
   runTransaction, serverTimestamp, where,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import app from '../firebase';
 import type { Pickup } from './pickup.types';
 import {
@@ -9,6 +10,30 @@ import {
 } from '../../../dev/mockPickups';
 
 const db = getFirestore(app);
+const functions = getFunctions(app, 'us-central1');
+const listAvailablePickupsCallable = httpsCallable<Record<string, never>, { pickups: Pickup[] }>(
+  functions,
+  'listAvailablePickupsFunction',
+);
+
+function mapPickupLocation(value: unknown): Pickup['pickupLocation'] {
+  const location = value as { latitude?: unknown; longitude?: unknown } | null;
+  if (!location || typeof location !== 'object') return null;
+  const { latitude, longitude } = location;
+  if (
+    typeof latitude !== 'number' ||
+    typeof longitude !== 'number' ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+  return { latitude, longitude };
+}
 
 function mapPickup(id: string, data: Record<string, any>): Pickup {
   return {
@@ -18,6 +43,7 @@ function mapPickup(id: string, data: Record<string, any>): Pickup {
     wasteTypeId: data.wasteTypeId ?? '',
     customerName: data.customerName ?? '',
     pickupAddress: data.pickupAddress ?? '',
+    pickupLocation: mapPickupLocation(data.pickupLocation),
     wasteTypeName: data.wasteTypeName ?? '',
     estimatedWeight: data.estimatedWeight ?? 0,
     actualWeight: data.actualWeight ?? null,
@@ -38,13 +64,11 @@ function mapPickup(id: string, data: Record<string, any>): Pickup {
 
 export async function getAvailablePickups(): Promise<Pickup[]> {
   if (MOCK_PICKUP_MODE) return getMockPickups('demo-rider').available;
-  const snapshot = await getDocs(query(collection(db, 'pickups'), where('status', '==', 'pending')));
-  return snapshot.docs
-    .filter((item) => {
-      const data = item.data();
-      return typeof data.facilityId === 'string' && typeof data.facilityName === 'string' && typeof data.facilityAddress === 'string';
-    })
-    .map((item) => mapPickup(item.id, item.data()));
+  const result = await listAvailablePickupsCallable({});
+  return result.data.pickups.map((pickup) => ({
+    ...pickup,
+    pickupLocation: mapPickupLocation(pickup.pickupLocation),
+  }));
 }
 
 export async function getPickupById(pickupId: string): Promise<Pickup | null> {

@@ -1,9 +1,11 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import * as Location from 'expo-location';
 import { useAuth } from '../../contexts/AuthContext/AuthContext';
 import { getAvailablePickups, getMyPickups, getPickupHistory } from '../../services/firebase/pickups/pickup.services';
 import type { Pickup } from '../../services/firebase/pickups/pickup.types';
+import { acceptPickup } from '../../services/firebase/pickups/pickup-acceptance.services';
 import PickupCard from './PickupCard';
 import MyPickupCard from './MyPickupCard';
 import PickupHistoryCard from './PickupHistoryCard';
@@ -12,21 +14,67 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export type PickupListMode = 'available' | 'mine' | 'history';
 
+type Coordinates = { latitude: number; longitude: number };
+
 const pageCopy: Record<PickupListMode, { title: string; subtitle: string; emptyTitle: string; emptyMessage: string }> = {
   available: { title: 'Available Pickups', subtitle: 'Review new requests and accept the collections you can complete.', emptyTitle: 'No available pickups', emptyMessage: 'New collection requests will appear here when they are available.' },
   mine: { title: 'My Pickups', subtitle: 'Manage the collections assigned to you from acceptance to completion.', emptyTitle: 'No active pickups', emptyMessage: 'Pickups you accept will appear here until they are completed.' },
   history: { title: 'Pickup History', subtitle: 'Review your completed collections and recorded waste weights.', emptyTitle: 'No completed pickups yet', emptyMessage: 'Your completed collections will be saved here for reference.' },
 };
 
+function hasCoordinates(pickup: Pickup): pickup is Pickup & { pickupLocation: Coordinates } {
+  return Boolean(
+    pickup.pickupLocation &&
+      Number.isFinite(pickup.pickupLocation.latitude) &&
+      Number.isFinite(pickup.pickupLocation.longitude),
+  );
+}
+
+function getDistanceKm(from: Coordinates, to: Coordinates): number {
+  const earthRadiusKm = 6371;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const latDelta = toRadians(to.latitude - from.latitude);
+  const lonDelta = toRadians(to.longitude - from.longitude);
+  const startLat = toRadians(from.latitude);
+  const endLat = toRadians(to.latitude);
+  const a =
+    Math.sin(latDelta / 2) ** 2 +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(lonDelta / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function getMarkerPosition(
+  pickup: Pickup & { pickupLocation: Coordinates },
+  pickups: (Pickup & { pickupLocation: Coordinates })[],
+): { top: `${number}%`; left: `${number}%` } {
+  const latitudes = pickups.map((item) => item.pickupLocation.latitude);
+  const longitudes = pickups.map((item) => item.pickupLocation.longitude);
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const minLon = Math.min(...longitudes);
+  const maxLon = Math.max(...longitudes);
+  const latRange = Math.max(maxLat - minLat, 0.005);
+  const lonRange = Math.max(maxLon - minLon, 0.005);
+  return {
+    top: `${12 + ((maxLat - pickup.pickupLocation.latitude) / latRange) * 76}%` as `${number}%`,
+    left: `${12 + ((pickup.pickupLocation.longitude - minLon) / lonRange) * 76}%` as `${number}%`,
+  };
+}
+
 export default function PickupListScreen({ mode }: { mode: PickupListMode }) {
   const { rider, loading: authLoading } = useAuth();
   const [pickups, setPickups] = useState<Pickup[]>([]);
+  const [activePickups, setActivePickups] = useState<Pickup[]>([]);
+  const [selectedPickupId, setSelectedPickupId] = useState<string | null>(null);
+  const [riderLocation, setRiderLocation] = useState<Coordinates | null>(null);
+  const [acceptingPickupId, setAcceptingPickupId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     if (!rider) {
       setPickups([]);
+      setActivePickups([]);
       setLoading(false);
       return;
     }
@@ -34,7 +82,19 @@ export default function PickupListScreen({ mode }: { mode: PickupListMode }) {
     setError('');
     try {
       let result: Pickup[];
-      if (mode === 'available') result = await getAvailablePickups();
+      if (mode === 'available') {
+        const [availablePickups, mine] = await Promise.all([
+          getAvailablePickups(),
+          getMyPickups(rider.id),
+        ]);
+        result = availablePickups;
+        setActivePickups(mine.filter((pickup) => pickup.status !== 'completed'));
+        setSelectedPickupId((current) =>
+          current && availablePickups.some((pickup) => pickup.id === current)
+            ? current
+            : availablePickups.find(hasCoordinates)?.id ?? availablePickups[0]?.id ?? null,
+        );
+      }
       else if (mode === 'mine') result = (await getMyPickups(rider.id)).filter((pickup) => pickup.status !== 'completed');
       else result = await getPickupHistory(rider.id);
       setPickups(result);
@@ -50,7 +110,48 @@ export default function PickupListScreen({ mode }: { mode: PickupListMode }) {
     void load();
   }, [load]));
 
+  async function loadRiderLocation() {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location Permission Required', 'Allow location access to calculate pickup distance.');
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      setRiderLocation({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+    } catch (locationError) {
+      console.error('Failed to load rider location for pickup map:', locationError);
+      Alert.alert('Location Error', 'Unable to calculate pickup distance right now.');
+    }
+  }
+
+  async function handleAcceptFromPreview(pickupId: string) {
+    if (acceptingPickupId) return;
+    setAcceptingPickupId(pickupId);
+    try {
+      await acceptPickup(pickupId);
+      Alert.alert('Pickup Accepted', 'This pickup has been added to your assigned pickups.');
+      await load();
+    } catch (acceptError) {
+      console.error('Failed to accept pickup from map preview:', acceptError);
+      Alert.alert('Unable to Accept Pickup', acceptError instanceof Error ? acceptError.message : 'Please try again.');
+    } finally {
+      setAcceptingPickupId(null);
+    }
+  }
+
   const copy = pageCopy[mode];
+  const mappedPickups = pickups.filter(hasCoordinates);
+  const selectedPickup = pickups.find((pickup) => pickup.id === selectedPickupId) ?? pickups[0] ?? null;
+  const selectedDistance =
+    riderLocation && selectedPickup && hasCoordinates(selectedPickup)
+      ? getDistanceKm(riderLocation, selectedPickup.pickupLocation)
+      : null;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -78,6 +179,79 @@ export default function PickupListScreen({ mode }: { mode: PickupListMode }) {
         {(authLoading || loading) && <ActivityIndicator size="large" color="#167647" style={styles.loader} />}
         {!authLoading && !loading && error ? <View style={styles.emptyCard}><Text style={styles.emptyTitle}>Unable to load pickups</Text><Text style={styles.emptyText}>{error}</Text><Pressable style={styles.retryButton} onPress={() => void load()}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
         {!authLoading && !loading && !error && pickups.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyIcon}>{mode === 'available' ? '♻' : mode === 'mine' ? '▤' : '✓'}</Text><Text style={styles.emptyTitle}>{copy.emptyTitle}</Text><Text style={styles.emptyText}>{copy.emptyMessage}</Text></View> : null}
+
+        {mode === 'available' && !authLoading && !loading && !error && pickups.length > 0 ? (
+          <View style={styles.mapSection}>
+            <View style={styles.mapHeader}>
+              <View>
+                <Text style={styles.mapTitle}>Pickup map</Text>
+                <Text style={styles.mapSubtitle}>{mappedPickups.length} mapped requests</Text>
+              </View>
+              <Pressable style={styles.locationButton} onPress={loadRiderLocation}>
+                <Text style={styles.locationButtonText}>Use my location</Text>
+              </Pressable>
+            </View>
+            <View style={styles.mapCanvas}>
+              {mappedPickups.length === 0 ? (
+                <Text style={styles.mapEmpty}>No pickup coordinates available.</Text>
+              ) : (
+                mappedPickups.map((pickup) => {
+                  const position = getMarkerPosition(pickup, mappedPickups);
+                  const selected = selectedPickupId === pickup.id;
+                  return (
+                    <Pressable
+                      key={pickup.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Preview pickup ${pickup.id}`}
+                      onPress={() => setSelectedPickupId(pickup.id)}
+                      style={[styles.mapMarker, position, selected && styles.mapMarkerSelected]}
+                    >
+                      <Text style={styles.mapMarkerText}>{pickup.estimatedWeight || '?'}</Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </View>
+            {selectedPickup ? (
+              <View style={styles.previewCard}>
+                <View style={styles.previewTop}>
+                  <View>
+                    <Text style={styles.previewEyebrow}>SELECTED REQUEST</Text>
+                    <Text style={styles.previewTitle}>{selectedPickup.wasteTypeName || 'Waste type not specified'}</Text>
+                  </View>
+                  <Text style={styles.previewWeight}>{selectedPickup.estimatedWeight ?? 0} kg</Text>
+                </View>
+                <Text style={styles.previewMeta}>{selectedPickup.scheduledDate || 'Date not set'} · {selectedPickup.scheduledTime || 'Time not set'}</Text>
+                <Text style={styles.previewMeta}>{selectedPickup.facilityName || 'Destination facility not set'}</Text>
+                {selectedDistance !== null ? (
+                  <Text style={styles.previewDistance}>{selectedDistance.toFixed(1)} km away</Text>
+                ) : (
+                  <Text style={styles.previewMuted}>Distance appears after your location and pickup coordinates are available.</Text>
+                )}
+                <Pressable
+                  style={[styles.previewAcceptButton, acceptingPickupId === selectedPickup.id && styles.disabled]}
+                  onPress={() => handleAcceptFromPreview(selectedPickup.id)}
+                  disabled={acceptingPickupId !== null}
+                >
+                  {acceptingPickupId === selectedPickup.id ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.previewAcceptText}>Accept pickup</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {mode === 'available' && activePickups.length > 0 ? (
+          <View style={styles.activeSection}>
+            <Text style={styles.mapTitle}>Your active pickups</Text>
+            {activePickups.map((pickup) => (
+              <MyPickupCard key={pickup.id} pickup={pickup} riderId={rider?.id ?? ''} onStarted={() => void load()} />
+            ))}
+          </View>
+        ) : null}
 
         {!authLoading && !loading && !error && pickups.map((pickup) => {
           if (mode === 'available') return <PickupCard key={pickup.id} pickup={pickup} onAccepted={() => void load()} />;
@@ -120,4 +294,27 @@ const styles = StyleSheet.create({
   emptyText: { maxWidth: 280, marginTop: 6, color: '#7A887E', fontSize: 12, lineHeight: 18, textAlign: 'center' },
   retryButton: { marginTop: 14, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 11, backgroundColor: '#167647' },
   retryText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  mapSection: { marginBottom: 18, padding: 15, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4ECE5' },
+  mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  mapTitle: { color: '#25352A', fontSize: 16, fontWeight: '800' },
+  mapSubtitle: { marginTop: 3, color: '#7A887E', fontSize: 11 },
+  locationButton: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: '#E8F5EC' },
+  locationButtonText: { color: '#176B43', fontSize: 11, fontWeight: '800' },
+  mapCanvas: { height: 220, overflow: 'hidden', borderRadius: 15, backgroundColor: '#EAF1EC', borderWidth: 1, borderColor: '#D7E4DA' },
+  mapEmpty: { margin: 18, color: '#718076', fontSize: 12, lineHeight: 18 },
+  mapMarker: { position: 'absolute', width: 34, height: 34, marginLeft: -17, marginTop: -17, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#167647', borderWidth: 3, borderColor: '#FFFFFF' },
+  mapMarkerSelected: { backgroundColor: '#B7791F', transform: [{ scale: 1.12 }] },
+  mapMarkerText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  previewCard: { marginTop: 12, padding: 13, borderRadius: 14, backgroundColor: '#F6F9F6' },
+  previewTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  previewEyebrow: { color: '#87948A', fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  previewTitle: { marginTop: 4, color: '#25352A', fontSize: 14, fontWeight: '800' },
+  previewWeight: { color: '#176B43', fontSize: 13, fontWeight: '900' },
+  previewMeta: { marginTop: 6, color: '#64756A', fontSize: 11, lineHeight: 16 },
+  previewDistance: { marginTop: 7, color: '#176B43', fontSize: 12, fontWeight: '800' },
+  previewMuted: { marginTop: 7, color: '#87948A', fontSize: 11, lineHeight: 16 },
+  previewAcceptButton: { minHeight: 42, alignItems: 'center', justifyContent: 'center', marginTop: 12, borderRadius: 12, backgroundColor: '#167647' },
+  previewAcceptText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  activeSection: { marginTop: 4, marginBottom: 16 },
+  disabled: { opacity: 0.65 },
 });
