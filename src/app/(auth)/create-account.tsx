@@ -23,6 +23,7 @@ import {
 
 import {
   createRiderAccountFromInvitation,
+  completeRiderInvitation,
 } from '../../services/firebase/riders/invitation.services';
 
 export default function CreateAccountScreen() {
@@ -37,6 +38,17 @@ export default function CreateAccountScreen() {
     email?: string;
     phoneNumber?: string;
   }>();
+
+  function handleBackToInvitation() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace({
+      pathname: '/invitation',
+      params: { invitationId, invitationToken },
+    });
+  }
 
   const [fullName, setFullName] =
     useState('');
@@ -56,6 +68,9 @@ export default function CreateAccountScreen() {
   ] = useState(false);
 
   const [loading, setLoading] =
+    useState(false);
+
+  const [existingAccount, setExistingAccount] =
     useState(false);
 
   const [error, setError] =
@@ -127,8 +142,8 @@ export default function CreateAccountScreen() {
   const canCreateAccount =
     !loading &&
     fullName.trim().length > 0 &&
-    isPasswordValid &&
-    passwordsMatch;
+    password.length > 0 &&
+    (existingAccount || (isPasswordValid && passwordsMatch));
 
   async function handleCreateAccount() {
     if (
@@ -151,7 +166,7 @@ export default function CreateAccountScreen() {
       return;
     }
 
-    if (!isPasswordValid) {
+    if (!existingAccount && !isPasswordValid) {
       setError(
         'Please create a stronger password that meets all the requirements.',
       );
@@ -159,7 +174,7 @@ export default function CreateAccountScreen() {
       return;
     }
 
-    if (!passwordsMatch) {
+    if (!existingAccount && !passwordsMatch) {
       setError(
         'Passwords do not match.',
       );
@@ -171,32 +186,37 @@ export default function CreateAccountScreen() {
       setLoading(true);
       setError('');
 
-      await createRiderAccountFromInvitation({
-        invitationId,
-        invitationToken,
-        fullName: fullName.trim(),
-        password,
-      });
+      if (existingAccount) {
+        await login(email, password);
+        await completeRiderInvitation({
+          invitationId,
+          invitationToken,
+          fullName: fullName.trim(),
+        });
+      } else {
+        await createRiderAccountFromInvitation({
+          invitationId,
+          invitationToken,
+          fullName: fullName.trim(),
+          password,
+        });
 
-      await login(
-        email,
-        password,
-      );
+        await login(email, password);
+      }
 
       router.replace('/verification');
     } catch (err: any) {
-      console.error(
-        'Failed to create rider account:',
-        err,
-      );
-
       if (
+        !existingAccount &&
         err?.code ===
         'functions/already-exists'
       ) {
+        setExistingAccount(true);
         setError(
-          'An account with this email already exists.',
+          'This email already has an account. Enter its password to sign in and continue your Rider invitation.',
         );
+      } else if (err?.code === 'auth/invalid-credential') {
+        setError('The password was not accepted. Please try again.');
       } else if (
         err?.code ===
         'functions/failed-precondition'
@@ -221,8 +241,11 @@ export default function CreateAccountScreen() {
             'Please check your information and try again.',
         );
       } else {
+        console.error('Failed to complete rider invitation:', {
+          code: err?.code ?? 'unknown',
+        });
         setError(
-          'Unable to create your account. Please try again.',
+          'Unable to complete your Rider invitation. Please try again.',
         );
       }
     } finally {
@@ -246,9 +269,18 @@ export default function CreateAccountScreen() {
           styles.scrollContent
         }
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.container}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to invitation"
+            onPress={handleBackToInvitation}
+            style={styles.backButton}
+          >
+            <Text style={styles.backButtonText}>‹  Back to Invitation</Text>
+          </Pressable>
           <View style={styles.header}>
             <Text style={styles.logo}>
               BasuraGo
@@ -259,11 +291,13 @@ export default function CreateAccountScreen() {
             </Text>
 
             <Text style={styles.title}>
-              Create Your Account
+              {existingAccount ? 'Sign In to Continue' : 'Create Your Account'}
             </Text>
 
             <Text style={styles.subtitle}>
-              Your invitation has been verified.
+              {existingAccount
+                ? 'Use the existing account for this email. Your Customer profile will not be changed.'
+                : 'Your invitation has been verified.'}
             </Text>
           </View>
 
@@ -318,12 +352,14 @@ export default function CreateAccountScreen() {
                   setPassword(value);
                   setError('');
                 }}
-                placeholder="Create a strong password"
+                placeholder={existingAccount
+                  ? 'Enter your existing password'
+                  : 'Create a strong password'}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoComplete="new-password"
-                textContentType="newPassword"
+                autoComplete={existingAccount ? 'current-password' : 'new-password'}
+                textContentType={existingAccount ? 'password' : 'newPassword'}
                 returnKeyType="next"
                 style={styles.passwordInput}
                 editable={!loading}
@@ -349,7 +385,7 @@ export default function CreateAccountScreen() {
               </Pressable>
             </View>
 
-            {password.length > 0 && (
+            {!existingAccount && password.length > 0 && (
               <View style={styles.strengthContainer}>
                 <View
                   style={styles.strengthHeader}
@@ -452,11 +488,12 @@ export default function CreateAccountScreen() {
               </View>
             )}
 
-            <Text style={styles.label}>
-              Confirm Password
-            </Text>
+            {!existingAccount && <>
+              <Text style={styles.label}>
+                Confirm Password
+              </Text>
 
-            <View style={styles.passwordContainer}>
+              <View style={styles.passwordContainer}>
               <TextInput
                 value={confirmPassword}
                 onChangeText={(value) => {
@@ -499,22 +536,23 @@ export default function CreateAccountScreen() {
                     : 'Show'}
                 </Text>
               </Pressable>
-            </View>
+              </View>
 
-            {confirmPassword.length > 0 && (
-              <Text
-                style={[
-                  styles.matchText,
-                  passwordsMatch
-                    ? styles.matchSuccess
-                    : styles.matchError,
-                ]}
-              >
-                {passwordsMatch
-                  ? '✓ Passwords match'
-                  : 'Passwords do not match'}
-              </Text>
-            )}
+              {confirmPassword.length > 0 && (
+                <Text
+                  style={[
+                    styles.matchText,
+                    passwordsMatch
+                      ? styles.matchSuccess
+                      : styles.matchError,
+                  ]}
+                >
+                  {passwordsMatch
+                    ? '✓ Passwords match'
+                    : 'Passwords do not match'}
+                </Text>
+              )}
+            </>}
 
             {error ? (
               <Text style={styles.error}>
@@ -537,7 +575,7 @@ export default function CreateAccountScreen() {
                 />
               ) : (
                 <Text style={styles.buttonText}>
-                  Create Account
+                  {existingAccount ? 'Sign In & Continue' : 'Create Account'}
                 </Text>
               )}
             </Pressable>
@@ -584,7 +622,7 @@ function PasswordRequirement({
 const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F5F8F6',
   },
 
   scrollView: {
@@ -599,6 +637,19 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     paddingHorizontal: 24,
+  },
+
+  backButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+
+  backButtonText: {
+    color: '#176744',
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   header: {
@@ -628,7 +679,7 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 8,
     fontSize: 15,
-    color: '#555555',
+    color: '#64736A',
     textAlign: 'center',
   },
 
@@ -645,28 +696,28 @@ const styles = StyleSheet.create({
   input: {
     height: 52,
     borderWidth: 1,
-    borderColor: '#cccccc',
-    borderRadius: 10,
+    borderColor: '#DCE8DE',
+    borderRadius: 13,
     paddingHorizontal: 16,
     marginBottom: 18,
     fontSize: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FAFCFA',
   },
 
   lockedField: {
     height: 52,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 10,
+    borderColor: '#DCE8DE',
+    borderRadius: 13,
     paddingHorizontal: 16,
     justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#EFF8F1',
     marginBottom: 18,
   },
 
   lockedText: {
     fontSize: 16,
-    color: '#555555',
+    color: '#64736A',
   },
 
   passwordContainer: {
@@ -674,10 +725,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#cccccc',
+    borderColor: '#DCE8DE',
     borderRadius: 10,
     marginBottom: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
   },
 
   passwordInput: {
@@ -697,7 +748,7 @@ const styles = StyleSheet.create({
   visibilityText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1b5e20',
+    color: '#176744',
   },
 
   strengthContainer: {
@@ -713,7 +764,7 @@ const styles = StyleSheet.create({
 
   strengthLabel: {
     fontSize: 13,
-    color: '#555555',
+    color: '#64736A',
   },
 
   strengthValue: {
@@ -734,7 +785,7 @@ const styles = StyleSheet.create({
   },
 
   strengthStrong: {
-    color: '#1b5e20',
+    color: '#176744',
   },
 
   strengthBar: {
@@ -747,11 +798,11 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#DCE8DE',
   },
 
   strengthSegmentActive: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
   },
 
   requirements: {
@@ -770,7 +821,7 @@ const styles = StyleSheet.create({
   },
 
   requirementMet: {
-    color: '#1b5e20',
+    color: '#176744',
   },
 
   requirementUnmet: {
@@ -779,11 +830,11 @@ const styles = StyleSheet.create({
 
   requirementText: {
     fontSize: 13,
-    color: '#777777',
+    color: '#8B9690',
   },
 
   requirementTextMet: {
-    color: '#333333',
+    color: '#173D2C',
   },
 
   matchText: {
@@ -793,7 +844,7 @@ const styles = StyleSheet.create({
   },
 
   matchSuccess: {
-    color: '#1b5e20',
+    color: '#176744',
   },
 
   matchError: {
@@ -813,7 +864,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
   },
 
   buttonDisabled: {

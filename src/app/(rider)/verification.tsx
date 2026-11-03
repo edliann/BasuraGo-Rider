@@ -2,15 +2,16 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import {
   getCurrentUser,
@@ -29,42 +30,111 @@ export default function VerificationScreen() {
   const [application, setApplication] =
     useState<RiderApplication | null>(null);
 
+  const [applicationUserId, setApplicationUserId] =
+    useState<string | null>(null);
+
   const [loading, setLoading] =
     useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
 
   const [error, setError] =
     useState('');
 
-  useEffect(() => {
-    async function loadApplication() {
-      try {
-        const user = getCurrentUser();
+  const [refreshSequence, setRefreshSequence] =
+    useState(0);
 
-        if (!user) {
-          router.replace('/login');
-          return;
-        }
+  const focusedRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const requestInFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
+  const applicationUserIdRef = useRef<string | null>(null);
 
-        const result =
-          await getRiderApplication(user.uid);
-
-        setApplication(result);
-      } catch (error) {
-        console.error(
-          'Failed to load rider application:',
-          error,
-        );
-
-        setError(
-          'Unable to load your verification status.',
-        );
-      } finally {
-        setLoading(false);
-      }
+  const loadApplication = useCallback(async () => {
+    if (requestInFlightRef.current) {
+      refreshPendingRef.current = true;
+      const currentUserId = getCurrentUser()?.uid ?? null;
+      const hasCurrentUsersApplication =
+        applicationUserIdRef.current === currentUserId &&
+        currentUserId !== null;
+      setLoading(!hasCurrentUsersApplication);
+      setRefreshing(hasCurrentUsersApplication);
+      return;
     }
 
-    loadApplication();
+    const user = getCurrentUser();
+    if (!user) {
+      setApplication(null);
+      setApplicationUserId(null);
+      applicationUserIdRef.current = null;
+      setLoading(false);
+      router.replace('/login');
+      return;
+    }
+
+    requestInFlightRef.current = true;
+    refreshPendingRef.current = false;
+    const requestId = ++requestIdRef.current;
+    const hasCurrentUsersApplication =
+      applicationUserIdRef.current === user.uid;
+
+    setLoading(!hasCurrentUsersApplication);
+    setRefreshing(hasCurrentUsersApplication);
+    setError('');
+
+    const isCurrentRequest = () =>
+      focusedRef.current &&
+      requestId === requestIdRef.current &&
+      getCurrentUser()?.uid === user.uid;
+
+    try {
+      const result = await getRiderApplication(user.uid);
+
+      if (isCurrentRequest()) {
+        setApplication(result);
+        setApplicationUserId(user.uid);
+        applicationUserIdRef.current = user.uid;
+      }
+    } catch {
+      if (isCurrentRequest()) {
+        console.error('Failed to refresh rider verification status.');
+        setError(
+          'Unable to refresh your verification status. Your saved information has been kept. Please try again.',
+        );
+      }
+    } finally {
+      requestInFlightRef.current = false;
+
+      if (isCurrentRequest()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+
+      if (refreshPendingRef.current && focusedRef.current) {
+        refreshPendingRef.current = false;
+        setRefreshSequence((current) => current + 1);
+      }
+    }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSequence;
+      focusedRef.current = true;
+      void loadApplication();
+
+      return () => {
+        focusedRef.current = false;
+        refreshPendingRef.current = false;
+        requestIdRef.current += 1;
+      };
+    }, [loadApplication, refreshSequence]),
+  );
+
+  function handleRetry() {
+    setRefreshSequence((current) => current + 1);
+  }
 
   function handleContinueVerification() {
     if (!application) {
@@ -92,7 +162,12 @@ export default function VerificationScreen() {
     }
   }
 
-  if (loading) {
+  const currentUserId = getCurrentUser()?.uid ?? null;
+  const hasCurrentUsersApplication =
+    applicationUserId === currentUserId &&
+    currentUserId !== null;
+
+  if (loading && !hasCurrentUsersApplication) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -104,22 +179,44 @@ export default function VerificationScreen() {
     );
   }
 
-  if (error) {
+  if (error && !hasCurrentUsersApplication) {
     return (
       <View style={styles.center}>
         <Text style={styles.error}>
           {error}
         </Text>
+
+        <Pressable
+          accessibilityRole="button"
+          style={styles.primaryButton}
+          onPress={handleRetry}
+        >
+          <Text style={styles.primaryButtonText}>
+            Retry
+          </Text>
+        </Pressable>
       </View>
     );
   }
 
-  if (!application) {
+  if (!hasCurrentUsersApplication || !application) {
     return (
       <View style={styles.center}>
         <Text style={styles.message}>
           No rider application found.
         </Text>
+
+        {error ? (
+          <Pressable
+            accessibilityRole="button"
+            style={styles.primaryButton}
+            onPress={handleRetry}
+          >
+            <Text style={styles.primaryButtonText}>
+              Retry
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -183,6 +280,14 @@ export default function VerificationScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRetry}
+          tintColor="#176744"
+          colors={['#176744']}
+        />
+      }
     >
       <Text style={styles.title}>
         Rider Verification
@@ -192,6 +297,32 @@ export default function VerificationScreen() {
         Complete the requirements below before
         you can operate as a BasuraGo rider.
       </Text>
+
+      {refreshing ? (
+        <View style={styles.refreshingMessage}>
+          <ActivityIndicator size="small" />
+          <Text style={styles.message}>
+            Refreshing verification status...
+          </Text>
+        </View>
+      ) : null}
+
+      {error ? (
+        <View style={styles.refreshError}>
+          <Text style={styles.error}>
+            {error}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={refreshing}
+            onPress={handleRetry}
+          >
+            <Text style={styles.retryText}>
+              Retry
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* Application Status */}
 
@@ -601,7 +732,7 @@ function formatStatus(
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F5F8F6',
   },
 
   content: {
@@ -609,13 +740,14 @@ const styles = StyleSheet.create({
     maxWidth: 700,
     alignSelf: 'center',
     padding: 24,
-    paddingTop: 70,
+    paddingTop: 24,
     paddingBottom: 40,
   },
 
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#173D2C',
     marginBottom: 8,
   },
 
@@ -623,14 +755,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 24,
+    color: '#64736A',
   },
 
   applicationStatusCard: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 14,
+    borderColor: '#DCE8DE',
+    borderRadius: 20,
     padding: 18,
     marginBottom: 28,
+    backgroundColor: '#FFFFFF',
   },
 
   statusLabel: {
@@ -642,6 +776,7 @@ const styles = StyleSheet.create({
   statusValue: {
     fontSize: 18,
     fontWeight: '700',
+    color: '#173D2C',
   },
 
   sectionTitle: {
@@ -652,8 +787,9 @@ const styles = StyleSheet.create({
 
   requirementsCard: {
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 14,
+    borderColor: '#DCE8DE',
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
 
@@ -666,7 +802,7 @@ const styles = StyleSheet.create({
 
   requirementBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
+    borderBottomColor: '#E7EEE9',
   },
 
   checkCircle: {
@@ -675,22 +811,22 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#eeeeee',
+    backgroundColor: '#E8F5EC',
     marginRight: 12,
   },
 
   checkCircleCompleted: {
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
   },
 
   checkmark: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
 
   checkmarkIncomplete: {
-    color: '#777777',
+    color: '#8B9690',
   },
 
   requirementTitle: {
@@ -701,7 +837,7 @@ const styles = StyleSheet.create({
 
   requirementStatus: {
     fontSize: 12,
-    color: '#666666',
+    color: '#64736A',
   },
 
   progressSection: {
@@ -728,20 +864,20 @@ const styles = StyleSheet.create({
   progressTrack: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#eeeeee',
+    backgroundColor: '#E8F5EC',
     overflow: 'hidden',
   },
 
   progressFill: {
     height: '100%',
     borderRadius: 4,
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
   },
 
   progressText: {
     marginTop: 8,
     fontSize: 13,
-    color: '#666666',
+    color: '#64736A',
   },
 
   primaryButton: {
@@ -749,7 +885,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
     paddingHorizontal: 20,
     marginTop: 20,
   },
@@ -757,7 +893,29 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#FFFFFF',
+  },
+
+  refreshingMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+
+  refreshError: {
+    borderWidth: 1,
+    borderColor: '#E8C7C7',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    backgroundColor: '#FFF5F5',
+  },
+
+  retryText: {
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#176744',
   },
 
   completeSection: {
@@ -771,20 +929,20 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
     marginBottom: 16,
   },
 
   completeIconText: {
     fontSize: 30,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
 
   completeTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111111',
+    color: '#173D2C',
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -792,7 +950,7 @@ const styles = StyleSheet.create({
   completeDescription: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#666666',
+    color: '#64736A',
     textAlign: 'center',
     marginBottom: 4,
   },
@@ -802,7 +960,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     borderRadius: 16,
     padding: 18,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#EFF8F1',
     marginTop: 20,
   },
 
@@ -812,14 +970,14 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
     marginRight: 14,
   },
 
   statusIconText: {
     fontSize: 21,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
 
   statusContent: {
@@ -829,19 +987,19 @@ const styles = StyleSheet.create({
   statusTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111111',
+    color: '#173D2C',
     marginBottom: 5,
   },
 
   statusDescription: {
     fontSize: 14,
     lineHeight: 21,
-    color: '#666666',
+    color: '#64736A',
   },
 
   correctionCard: {
     borderWidth: 1,
-    borderColor: '#dddddd',
+    borderColor: '#DCE8DE',
     borderRadius: 16,
     padding: 18,
     marginTop: 20,
@@ -850,40 +1008,40 @@ const styles = StyleSheet.create({
   correctionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111111',
+    color: '#173D2C',
     marginBottom: 8,
   },
 
   correctionDescription: {
     fontSize: 14,
     lineHeight: 21,
-    color: '#666666',
+    color: '#64736A',
     marginBottom: 16,
   },
 
   correctionMessage: {
     borderRadius: 12,
     padding: 14,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#EFF8F1',
     marginBottom: 4,
   },
 
   correctionMessageLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#555555',
+    color: '#64736A',
     marginBottom: 6,
   },
 
   correctionMessageText: {
     fontSize: 14,
     lineHeight: 21,
-    color: '#222222',
+    color: '#173D2C',
   },
 
   rejectedCard: {
     borderWidth: 1,
-    borderColor: '#dddddd',
+    borderColor: '#DCE8DE',
     borderRadius: 16,
     padding: 18,
     marginTop: 20,
@@ -892,40 +1050,40 @@ const styles = StyleSheet.create({
   rejectedTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111111',
+    color: '#173D2C',
     marginBottom: 8,
   },
 
   rejectedDescription: {
     fontSize: 14,
     lineHeight: 21,
-    color: '#666666',
+    color: '#64736A',
     marginBottom: 16,
   },
 
   rejectionMessage: {
     borderRadius: 12,
     padding: 14,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#EFF8F1',
   },
 
   rejectionMessageLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#555555',
+    color: '#64736A',
     marginBottom: 6,
   },
 
   rejectionMessageText: {
     fontSize: 14,
     lineHeight: 21,
-    color: '#222222',
+    color: '#173D2C',
   },
 
   approvedCard: {
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#dddddd',
+    borderColor: '#DCE8DE',
     borderRadius: 16,
     padding: 24,
     marginTop: 20,
@@ -937,20 +1095,20 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1b5e20',
+    backgroundColor: '#176744',
     marginBottom: 16,
   },
 
   approvedIconText: {
     fontSize: 30,
     fontWeight: '700',
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
 
   approvedTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111111',
+    color: '#173D2C',
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -958,7 +1116,7 @@ const styles = StyleSheet.create({
   approvedDescription: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#666666',
+    color: '#64736A',
     textAlign: 'center',
   },
 

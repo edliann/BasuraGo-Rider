@@ -15,6 +15,8 @@ const demoLocations: Record<string, { latitude: number; longitude: number }> = {
 const makePickup = (values: Partial<Pickup> & Pick<Pickup, 'id' | 'customerName' | 'pickupAddress' | 'wasteTypeName' | 'status'>): Pickup => ({
   customerId: `demo-${values.id}`, addressId: `demo-address-${values.id}`, wasteTypeId: 'demo-waste',
   estimatedWeight: 8, actualWeight: null, scheduledDate: '2026-10-15', scheduledTime: '9:00 AM – 10:00 AM',
+  collectedWeightKg: null, facilityReceivedWeightKg: null,
+  collectionCompletedAt: null, facilityReceipt: null,
   facilityId: 'demo-facility', facilityName: 'BasuraGo Materials Recovery Facility',
   facilityAddress: 'Libertad, Butuan City', pickupLocation: demoLocations[values.id], riderId: null, vehicleId: 'BG-DEMO-01', notes: '',
   completedAt: null, createdAt: null, updatedAt: null, ...values,
@@ -55,7 +57,7 @@ export function updateMockPickup(id: string, action: 'accept' | 'start' | 'compl
     records[index] = { ...current, status: 'in_progress' };
   } else {
     if (current.status !== 'in_progress' || current.riderId !== riderId) throw new Error('This demo pickup cannot be completed.');
-    records[index] = { ...current, status: 'completed', actualWeight: current.actualWeight ?? current.estimatedWeight };
+    records[index] = { ...current, status: 'awaiting_facility_receipt' };
   }
   return { ...records[index] };
 }

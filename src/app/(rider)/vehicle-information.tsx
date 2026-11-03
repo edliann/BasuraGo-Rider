@@ -1,10 +1,13 @@
 import {
+  useCallback,
   useEffect,
   useState,
 } from 'react';
 
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -90,20 +93,36 @@ export default function VehicleInformationScreen() {
   const { returnTo } = useLocalSearchParams<{
     returnTo?: string;
   }>();
+  const parentRoute = returnTo === '/review-application'
+    || returnTo === '/account'
+    || returnTo === '/settings'
+    ? returnTo
+    : '/verification';
+  const parentLabel = parentRoute === '/account'
+    ? 'Account'
+    : parentRoute === '/settings'
+      ? 'Settings'
+      : parentRoute === '/review-application'
+        ? 'Application Review'
+        : 'Verification';
 
-  useEffect(() => {
-    loadExistingVehicleInformation();
-  }, []);
+  function handleBackToParent() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(parentRoute);
+  }
 
-  async function loadExistingVehicleInformation() {
+  const loadExistingVehicleInformation = useCallback(async () => {
+    const user = getCurrentUser();
+    if (!user) {
+      router.replace('/login');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const user = getCurrentUser();
-
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
-
       const application =
         await getRiderApplication(
           user.uid,
@@ -160,7 +179,19 @@ export default function VehicleInformationScreen() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) {
+        return loadExistingVehicleInformation();
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadExistingVehicleInformation]);
 
   function validateForm(): string | null {
     if (!vehicleType) {
@@ -239,11 +270,7 @@ export default function VehicleInformationScreen() {
           {
             text: 'Continue',
             onPress: () => {
-              router.replace(
-                returnTo === '/review-application'
-                  ? '/review-application'
-                  : '/verification',
-              );
+              handleBackToParent();
             },
           },
         ],
@@ -274,13 +301,18 @@ export default function VehicleInformationScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={
-        styles.content
-      }
-      keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingView
+      style={styles.keyboardContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={
+          styles.content
+        }
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+      >
       <View style={styles.header}>
         <Text style={styles.stepText}>
           RIDER VERIFICATION
@@ -452,23 +484,26 @@ export default function VehicleInformationScreen() {
 
       <Pressable
         style={styles.backButton}
-        onPress={() =>
-          router.replace('/verification')
-        }
+        onPress={handleBackToParent}
         disabled={saving}
       >
         <Text style={styles.backButtonText}>
-          Back to Verification
+          Back to {parentLabel}
         </Text>
       </Pressable>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardContainer: {
+    flex: 1,
+  },
+
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F5F8F6',
   },
 
   content: {
@@ -482,7 +517,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: '#F5F8F6',
   },
 
   header: {
@@ -493,7 +528,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 1,
-    color: '#666',
+    color: '#64736A',
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -501,7 +536,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#111',
+    color: '#173D2C',
     textAlign: 'center',
     marginBottom: 10,
   },
@@ -509,7 +544,7 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#666',
+    color: '#64736A',
     textAlign: 'center',
   },
 
@@ -520,19 +555,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#222',
+    color: '#173D2C',
     marginBottom: 8,
   },
 
   input: {
     minHeight: 52,
     borderWidth: 1,
-    borderColor: '#d5d5d5',
+    borderColor: '#DCE8DE',
     borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#111',
-    backgroundColor: '#fff',
+    color: '#173D2C',
+    backgroundColor: '#FAFCFA',
   },
 
   vehicleTypes: {
@@ -546,22 +581,22 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: '#d5d5d5',
+    borderColor: '#DCE8DE',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
   },
 
   vehicleOptionSelected: {
-    borderColor: '#111',
-    backgroundColor: '#111',
+    borderColor: '#176744',
+    backgroundColor: '#176744',
   },
 
   vehicleOptionText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#444',
+    color: '#64736A',
   },
 
   vehicleOptionTextSelected: {
@@ -571,27 +606,27 @@ const styles = StyleSheet.create({
   infoBox: {
     padding: 16,
     borderRadius: 12,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#EFF8F1',
     marginBottom: 24,
   },
 
   infoTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#222',
+    color: '#173D2C',
     marginBottom: 5,
   },
 
   infoText: {
     fontSize: 13,
     lineHeight: 19,
-    color: '#666',
+    color: '#64736A',
   },
 
   primaryButton: {
     minHeight: 54,
     borderRadius: 14,
-    backgroundColor: '#111',
+    backgroundColor: '#176744',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -616,11 +651,11 @@ const styles = StyleSheet.create({
   backButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#555',
+    color: '#64736A',
   },
 
   loadingText: {
     fontSize: 16,
-    color: '#555',
+    color: '#64736A',
   },
 });

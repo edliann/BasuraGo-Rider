@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext/AuthContext';
 import { logout } from '../../services/firebase/auth/auth.services';
+import { updateRiderOnlineStatus } from '../../services/firebase/riders/riders.services';
 
 export default function RiderSettingsScreen() {
   const { rider, user } = useAuth();
@@ -17,6 +18,13 @@ export default function RiderSettingsScreen() {
       { text: 'Sign out', style: 'destructive', onPress: async () => {
         try {
           setLoggingOut(true);
+          if (rider && user?.uid === rider.id) {
+            try {
+              await updateRiderOnlineStatus(rider.id, false);
+            } catch {
+              console.warn('Unable to update rider online status during sign-out.');
+            }
+          }
           await logout();
           router.replace('/login');
         } catch (error) {
@@ -29,22 +37,19 @@ export default function RiderSettingsScreen() {
     ]);
   }
 
+  function handleBackToAccount() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/account');
+  }
+
   return <SafeAreaView style={styles.safeArea} edges={['top']}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-    <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹  Back</Text></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="Back to account" onPress={handleBackToAccount} style={styles.backButton}><Text style={styles.backText}>‹  Back to Account</Text></Pressable>
     <Text style={styles.eyebrow}>BASURAGO RIDER</Text>
     <Text style={styles.title}>Settings</Text>
-    <Text style={styles.subtitle}>Manage your account and rider preferences.</Text>
-
-    <View style={styles.profileCard}><View style={styles.avatar}><Text style={styles.avatarText}>{(rider?.fullName || user?.displayName || 'R').trim().charAt(0).toUpperCase()}</Text></View><View style={styles.profileInfo}><Text style={styles.profileName}>{rider?.fullName || user?.displayName || 'Rider'}</Text><Text style={styles.email}>{user?.email || ''}</Text></View></View>
-
-    <Text style={styles.sectionTitle}>Account</Text>
-    <View style={styles.optionsCard}>
-      <OptionRow icon="♙" title="My Account" onPress={() => router.push('/account')} />
-      <Divider />
-      <OptionRow icon="✎" title="Edit profile" onPress={() => router.push('/edit-profile')} />
-      <Divider />
-      <OptionRow icon="🚚" title="Vehicle information" onPress={() => router.push('/vehicle-information')} />
-    </View>
+    <Text style={styles.subtitle}>Manage your rider preferences.</Text>
 
     <Text style={styles.sectionTitle}>Notifications</Text>
     <View style={styles.optionsCard}>
@@ -59,15 +64,12 @@ export default function RiderSettingsScreen() {
   </ScrollView></SafeAreaView>;
 }
 
-function OptionRow({ icon, title, onPress }: { icon: string; title: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.optionRow, pressed && styles.pressed]}><Text style={styles.optionIcon}>{icon}</Text><Text style={styles.optionText}>{title}</Text><Text style={styles.chevron}>›</Text></Pressable>;
-}
 function Divider() { return <View style={styles.separator} />; }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F8F5' },
+  safeArea: { flex: 1, backgroundColor: '#F5F8F6' },
   content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 22, paddingBottom: 40 },
-  backButton: { alignSelf: 'flex-start', paddingVertical: 8, marginBottom: 18 },
+  backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginBottom: 18 },
   backText: { color: '#176744', fontSize: 16, fontWeight: '700' },
   eyebrow: { color: '#38B84A', fontSize: 11, fontWeight: '800', letterSpacing: 1.3, marginBottom: 6 },
   title: { color: '#173D2C', fontSize: 30, fontWeight: '800' },
@@ -80,8 +82,7 @@ const styles = StyleSheet.create({
   email: { fontSize: 12, color: '#64736A', marginTop: 5 },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#173D2C', marginBottom: 12 },
   optionsCard: { backgroundColor: '#FFFFFF', borderRadius: 18, paddingHorizontal: 16, borderWidth: 1, borderColor: '#DCE8DE', marginBottom: 25 },
-  optionRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  optionIcon: { width: 32, fontSize: 22, color: '#176744', textAlign: 'center' },
+  optionRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 8 },
   optionText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#173D2C' },
   chevron: { fontSize: 25, color: '#8B9690' },
   separator: { height: 1, backgroundColor: '#E7EEE9' },

@@ -73,6 +73,18 @@ export default function GovernmentIdScreen() {
     returnTo?: string;
   }>();
 
+  const parentRoute = returnTo === '/review-application'
+    ? '/review-application'
+    : '/verification';
+
+  function handleBackToParent() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(parentRoute);
+  }
+
   async function handleStartCamera(
     side: CaptureSide,
   ) {
@@ -339,6 +351,14 @@ export default function GovernmentIdScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Back to ${parentRoute === '/review-application' ? 'application review' : 'verification'}`}
+          onPress={handleBackToParent}
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>‹  Back</Text>
+        </Pressable>
         <Text style={styles.eyebrow}>
           VERIFICATION 1 OF 4
         </Text>
@@ -511,9 +531,11 @@ export default function GovernmentIdScreen() {
 }
 
 const styles = StyleSheet.create({
+  backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginBottom: 8 },
+  backButtonText: { color: '#176744', fontSize: 14, fontWeight: '700' },
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: '#F5F8F6',
   },
 
   scrollView: {
@@ -529,21 +551,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1,
-    color: '#6B7280',
+    color: '#64736A',
     marginBottom: 8,
   },
 
   title: {
     fontSize: 30,
     fontWeight: '800',
-    color: '#111827',
+    color: '#173D2C',
     marginBottom: 8,
   },
 
   subtitle: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#6B7280',
+    color: '#64736A',
     marginBottom: 24,
   },
 
@@ -557,7 +579,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: '#173D2C',
     marginBottom: 12,
   },
 
@@ -580,13 +602,13 @@ const styles = StyleSheet.create({
   captureCardTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: '#173D2C',
     marginBottom: 4,
   },
 
   captureCardText: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#64736A',
     textAlign: 'center',
   },
 
@@ -614,7 +636,7 @@ const styles = StyleSheet.create({
   },
 
   tip: {
-    backgroundColor: '#EEF6FF',
+    backgroundColor: '#E8F5EC',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
@@ -636,7 +658,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     height: 52,
     borderRadius: 12,
-    backgroundColor: '#111827',
+    backgroundColor: '#173D2C',
     alignItems: 'center',
     justifyContent: 'center',
   },

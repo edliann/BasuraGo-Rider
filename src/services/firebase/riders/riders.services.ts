@@ -6,13 +6,13 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 
-import app from '../firebase';
+import firebaseApp from '../firebase';
 
 import type {
   Rider,
 } from './riders.types';
 
-const db = getFirestore(app);
+const db = getFirestore(firebaseApp);
 
 export async function getRider(
   riderId: string,
@@ -43,7 +43,7 @@ export async function getRider(
       data.phoneNumber ?? '',
 
     status:
-      data.status ?? 'active',
+      data.status ?? 'pending',
 
     vehicleId:
       data.vehicleId ?? null,

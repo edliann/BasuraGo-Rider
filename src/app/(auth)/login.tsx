@@ -1,29 +1,34 @@
 import {
+  useRef,
   useState,
 } from 'react';
 
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import RemixIcon from 'react-native-remix-icon';
 
 import {
   login,
+  resetPassword,
 } from '../../services/firebase/auth/auth.services';
 
 import {
-  Redirect, router
+  Redirect,
 } from 'expo-router';
 
 import {
   useAuth,
 } from '../../contexts/AuthContext/AuthContext';
-
-import { TEST_INVITATION } from '../../utils/invitation-test';
 
 export default function Login() {
   const [email, setEmail] =
@@ -32,20 +37,33 @@ export default function Login() {
   const [password, setPassword] =
     useState('');
 
+  const [showPassword, setShowPassword] =
+    useState(false);
+
   const [loading, setLoading] =
     useState(false);
 
   const [error, setError] =
     useState('');
+  const loginInProgress = useRef(false);
 
   const {
     rider,
     application,
     user,
+    authInitializationFailed,
     loading: authLoading,
   } = useAuth();
 
   async function handleLogin() {
+    if (
+      loginInProgress.current ||
+      authLoading ||
+      authInitializationFailed
+    ) {
+      return;
+    }
+
     if (!email.trim() || !password) {
       setError(
         'Please enter your email and password.',
@@ -55,27 +73,23 @@ export default function Login() {
     }
 
     try {
+      loginInProgress.current = true;
       setLoading(true);
       setError('');
 
-        await login(
+      await login(
         email,
         password,
-        );
-
-        // AuthContext will now detect
-        // whether this account is an active rider.
-
+      );
     } catch (err) {
       console.error(
         'Rider login failed:',
         err,
       );
 
-      setError(
-        'Invalid email or password.',
-      );
+      setError(getLoginErrorMessage(err));
     } finally {
+      loginInProgress.current = false;
       setLoading(false);
     }
   }
@@ -90,8 +104,50 @@ export default function Login() {
 
       return <Redirect href="/access-denied" />;
     }
+
+  async function handleForgotPassword() {
+    if (authLoading || authInitializationFailed) return;
+
+    if (!email.trim()) {
+      setError('Please enter your email address first.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      await resetPassword(email.trim());
+
+      alert(
+        'Password reset email sent. Check your inbox and follow the instructions.'
+      );
+    } catch (err) {
+      console.error('Password reset failed:', err);
+
+      setError(
+        'Unable to send the reset email. Check your email address and try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isBusy =
+    loading || authLoading || authInitializationFailed;
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          showsVerticalScrollIndicator={false}
+        >
       <View style={styles.header}>
         <Text style={styles.logo}>
           BasuraGo
@@ -129,31 +185,59 @@ export default function Login() {
           Password
         </Text>
 
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Enter your password"
-          secureTextEntry
-          autoCapitalize="none"
-          style={styles.input}
-        />
+        <View style={[styles.input, styles.passwordInputContainer]}>
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Enter your password"
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            style={styles.passwordInput}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            onPress={() => setShowPassword((visible) => !visible)}
+            style={styles.visibilityButton}
+            hitSlop={8}
+          >
+            <RemixIcon
+              name={showPassword ? 'eye-off-line' : 'eye-line'}
+              size={20}
+              color="#176744"
+              accessible={false}
+            />
+          </Pressable>
+        </View>
 
-        {error ? (
+        {authInitializationFailed || error ? (
           <Text style={styles.error}>
-            {error}
+            {authInitializationFailed
+              ? 'Secure sign-in could not initialize. Restart the app and try again.'
+              : error}
           </Text>
         ) : null}
 
         <Pressable
+          onPress={handleForgotPassword}
+          disabled={isBusy}
+          style={styles.forgotPassword}
+        >
+          <Text style={styles.link}>
+            Forgot Password?
+          </Text>
+        </Pressable>
+
+        <Pressable
           style={[
             styles.button,
-            loading &&
+            isBusy &&
               styles.buttonDisabled,
           ]}
           onPress={handleLogin}
-          disabled={loading}
+          disabled={isBusy}
         >
-          {loading ? (
+          {isBusy ? (
             <ActivityIndicator
               color="#ffffff"
             />
@@ -165,109 +249,161 @@ export default function Login() {
         </Pressable>
         <View style={styles.signUpRow}>
           <Text style={styles.signUpText}>
-            Don't have an account?
+            Rider registration is invitation-only. Open the link sent by your
+            administrator to accept an invitation.
           </Text>
-
-          <Pressable
-            onPress={() => router.push('/signup')}
-          >
-            <Text style={styles.link}>
-              Sign Up
-            </Text>
-          </Pressable>
         </View>
 
-        <Pressable
-          style={styles.testInvitationButton}
-          onPress={() => {
-            router.push({
-              pathname: '/invitation',
-              params: {
-                invitationId:
-                  TEST_INVITATION.invitationId,
-                invitationToken:
-                  TEST_INVITATION.invitationToken,
-              },
-            });
-          }}
-        >
-          <Text style={styles.testInvitationButtonText}>
-            Test Invitation
-          </Text>
-        </Pressable>
       </View>
-    </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
+}
+
+function getLoginErrorMessage(error: unknown): string {
+  const code =
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+      ? error.code
+      : '';
+
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+      return 'The email or password is incorrect.';
+    case 'auth/invalid-email':
+      return 'Enter a valid email address.';
+    case 'auth/user-disabled':
+      return 'This account is disabled. Contact support.';
+    case 'auth/too-many-requests':
+      return 'Too many sign-in attempts. Please wait and try again.';
+    case 'auth/network-request-failed':
+      return 'Unable to reach Firebase. Check your connection and try again.';
+    default:
+      return 'Unable to sign in right now. Please try again.';
+  }
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F5F8F6',
+  },
+
+  keyboardContainer: {
+    flex: 1,
+  },
+
+  content: {
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
     paddingHorizontal: 24,
+    paddingVertical: 24,
     justifyContent: 'center',
   },
 
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 28,
   },
 
   logo: {
-    fontSize: 36,
-    fontWeight: '700',
+    color: '#176744',
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.7,
   },
 
   role: {
     marginTop: 4,
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 3,
+    color: '#64736A',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 2,
   },
 
   title: {
-    marginTop: 40,
+    marginTop: 30,
+    color: '#173D2C',
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 
   subtitle: {
     marginTop: 8,
+    color: '#64736A',
     fontSize: 16,
   },
 
   form: {
     width: '100%',
+    padding: 20,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#DCE8DE',
+    backgroundColor: '#FFFFFF',
   },
 
   label: {
-    marginBottom: 8,
+    marginBottom: 9,
+    color: '#173D2C',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 
   input: {
-    height: 52,
+    minHeight: 50,
     borderWidth: 1,
-    borderColor: '#cccccc',
-    borderRadius: 10,
-    paddingHorizontal: 16,
+    borderColor: '#DCE8DE',
+    borderRadius: 13,
+    paddingHorizontal: 14,
     marginBottom: 20,
-    fontSize: 16,
+    color: '#173D2C',
+    backgroundColor: '#FAFCFA',
+    fontSize: 14,
+  },
+
+  passwordInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 8,
+  },
+
+  passwordInput: {
+    flex: 1,
+    minHeight: 48,
+    paddingVertical: 0,
+    paddingRight: 0,
+    color: '#173D2C',
+    fontSize: 14,
+  },
+
+  visibilityButton: {
+    minWidth: 36,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   error: {
     marginBottom: 16,
+    color: '#B42318',
     fontSize: 14,
     textAlign: 'center',
   },
 
   button: {
-    height: 54,
-    borderRadius: 10,
+    minHeight: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111111',
+    backgroundColor: '#176744',
   },
 
   buttonDisabled: {
@@ -290,26 +426,20 @@ signUpRow: {
 
 signUpText: {
   fontSize: 14,
+  lineHeight: 20,
+  color: '#64736A',
+  textAlign: 'center',
 },
 
 link: {
-  color: '#1b5e20',
+  color: '#176744',
   fontWeight: '700',
 },
 
-  testInvitationButton: {
-    marginTop: 16,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#1b5e20',
-    borderRadius: 10,
-  },
-
-  testInvitationButtonText: {
-    color: '#1b5e20',
-    fontSize: 14,
-    fontWeight: '700',
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginTop: -10,
+    marginBottom: 20,
+    paddingVertical: 4,
   },
 });

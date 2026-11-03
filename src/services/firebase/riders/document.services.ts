@@ -5,11 +5,11 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 
-import app from '../firebase';
+import firebaseApp from '../firebase';
 
 import { getCurrentUser } from '../../firebase/auth/auth.services';
 
-const db = getFirestore(app);
+const db = getFirestore(firebaseApp);
 
 export type RiderDocumentType =
   | 'government-id'

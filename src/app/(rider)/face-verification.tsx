@@ -56,6 +56,17 @@ export default function FaceVerificationScreen() {
   const { returnTo } = useLocalSearchParams<{
     returnTo?: string;
   }>();
+  const parentRoute = returnTo === '/review-application'
+    ? '/review-application'
+    : '/verification';
+
+  function handleBackToParent() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(parentRoute);
+  }
 
   async function handleCapture() {
     if (
@@ -211,6 +222,14 @@ export default function FaceVerificationScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.center}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to previous screen"
+          onPress={handleBackToParent}
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>‹  Back</Text>
+        </Pressable>
         <Text style={styles.title}>
           Camera Permission Required
         </Text>
@@ -236,6 +255,14 @@ export default function FaceVerificationScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to previous screen"
+            onPress={handleBackToParent}
+            style={styles.backButton}
+          >
+            <Text style={styles.backButtonText}>‹  Back</Text>
+          </Pressable>
           <Text style={styles.stepText}>
             FACE VERIFICATION
           </Text>
@@ -288,6 +315,14 @@ export default function FaceVerificationScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to previous screen"
+          onPress={handleBackToParent}
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>‹  Back</Text>
+        </Pressable>
         <Text style={styles.stepText}>
           FACE VERIFICATION
         </Text>
@@ -352,6 +387,17 @@ export default function FaceVerificationScreen() {
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  backButtonText: {
+    color: '#176744',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',

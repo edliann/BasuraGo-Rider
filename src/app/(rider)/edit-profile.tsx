@@ -1,23 +1,52 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext/AuthContext';
 import { updateRiderProfile } from '../../services/firebase/riders/riders.services';
 
 export default function EditRiderProfileScreen() {
   const { rider, user, loading } = useAuth();
-  const [fullName, setFullName] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
+
+  if (loading || !rider) {
+    return <SafeAreaView style={styles.safeArea} edges={['top']}><View style={styles.loading}><ActivityIndicator size="large" color="#176744" /><Text style={styles.muted}>Loading your profile…</Text></View></SafeAreaView>;
+  }
+
+  return (
+    <EditRiderProfileForm
+      key={rider.id}
+      rider={rider}
+      initialFullName={user?.displayName ?? ''}
+    />
+  );
+}
+
+type EditRiderProfileFormProps = {
+  rider: NonNullable<ReturnType<typeof useAuth>['rider']>;
+  initialFullName: string;
+};
+
+function EditRiderProfileForm({
+  rider,
+  initialFullName,
+}: EditRiderProfileFormProps) {
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const parentRoute = returnTo === '/settings' ? '/settings' : '/account';
+  const parentLabel = parentRoute === '/settings' ? 'Settings' : 'Account';
+  function handleBackToParent() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(parentRoute);
+  }
+  const [fullName, setFullName] = useState(
+    rider.fullName ?? initialFullName,
+  );
+  const [phoneNumber, setPhoneNumber] = useState(rider.phoneNumber ?? '');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    setFullName(rider?.fullName ?? user?.displayName ?? '');
-    setPhoneNumber(rider?.phoneNumber ?? '');
-  }, [rider, user?.displayName]);
-
   async function handleSave() {
-    if (!rider) return;
     if (!fullName.trim()) {
       Alert.alert('Missing name', 'Please enter your full name.');
       return;
@@ -29,7 +58,7 @@ export default function EditRiderProfileScreen() {
     setSaving(true);
     try {
       await updateRiderProfile(rider.id, { fullName, phoneNumber });
-      Alert.alert('Profile updated', 'Your changes have been saved.', [{ text: 'OK', onPress: () => router.back() }]);
+      Alert.alert('Profile updated', 'Your changes have been saved.', [{ text: 'OK', onPress: handleBackToParent }]);
     } catch (error) {
       console.error('Failed to update rider profile:', error);
       Alert.alert('Save failed', 'We could not save your changes. Please try again.');
@@ -38,12 +67,8 @@ export default function EditRiderProfileScreen() {
     }
   }
 
-  if (loading || !rider) {
-    return <SafeAreaView style={styles.safeArea} edges={['top']}><View style={styles.loading}><ActivityIndicator size="large" color="#176744" /><Text style={styles.muted}>Loading your profile…</Text></View></SafeAreaView>;
-  }
-
-  return <SafeAreaView style={styles.safeArea} edges={['top']}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-    <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹  Back to Account</Text></Pressable>
+  return <SafeAreaView style={styles.safeArea} edges={['top']}><KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="none" showsVerticalScrollIndicator={false}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${parentLabel.toLowerCase()}`} onPress={handleBackToParent} style={styles.backButton}><Text style={styles.backText}>‹  Back to {parentLabel}</Text></Pressable>
     <Text style={styles.eyebrow}>YOUR BASURAGO RIDER ACCOUNT</Text>
     <Text style={styles.title}>Edit profile</Text>
     <Text style={styles.subtitle}>Keep your rider contact information up to date.</Text>
@@ -54,17 +79,18 @@ export default function EditRiderProfileScreen() {
       <TextInput value={phoneNumber} onChangeText={setPhoneNumber} placeholder="09XXXXXXXXX or +639XXXXXXXXX" keyboardType="phone-pad" editable={!saving} style={styles.input} />
       <Text style={styles.helper}>Use the mobile number your operations team can reach you on.</Text>
       <Pressable accessibilityRole="button" disabled={saving} onPress={handleSave} style={[styles.saveButton, saving && styles.disabled]}><Text style={styles.saveText}>{saving ? 'Saving changes…' : 'Save changes'}</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={saving} onPress={() => router.back()} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={saving} onPress={handleBackToParent} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel</Text></Pressable>
     </View>
-  </ScrollView></SafeAreaView>;
+  </ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F8F5' },
+  safeArea: { flex: 1, backgroundColor: '#F5F8F6' },
+  keyboardAvoiding: { flex: 1 },
   content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 22, paddingBottom: 40 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   muted: { color: '#64736A', fontSize: 14 },
-  backButton: { alignSelf: 'flex-start', paddingVertical: 10, marginBottom: 22 },
+  backButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginBottom: 22 },
   backText: { color: '#176744', fontSize: 14, fontWeight: '700' },
   eyebrow: { color: '#38B84A', fontSize: 11, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8 },
   title: { color: '#173D2C', fontSize: 29, fontWeight: '800' },

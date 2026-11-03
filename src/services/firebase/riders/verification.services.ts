@@ -1,21 +1,19 @@
 import {
   doc,
   getDoc,
+  getFirestore,
   serverTimestamp,
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
 
-import { getFirestore } from 'firebase/firestore';
-
-import app from '../firebase';
+import firebaseApp from '../firebase';
 
 import type {
   RiderApplication,
-  RiderApplicationStatus,
 } from './verification.types';
 
-const db = getFirestore(app);
+const db = getFirestore(firebaseApp);
 
 export async function createRiderApplication(
   riderId: string,
@@ -131,11 +129,11 @@ export async function submitRiderApplication(
   }
 
   const isComplete =
-    application.basicInformationCompleted &&
-    application.identityDocumentCompleted &&
-    application.driversLicenseCompleted &&
-    application.faceVerificationCompleted &&
-    application.vehicleInformationCompleted;
+    application.basicInformationCompleted === true &&
+    application.identityDocumentCompleted === true &&
+    application.driversLicenseCompleted === true &&
+    application.faceVerificationCompleted === true &&
+    application.vehicleInformationCompleted === true;
 
   if (!isComplete) {
     throw new Error(

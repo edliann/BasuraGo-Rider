@@ -1,0 +1,85 @@
+{
+  "project_info": {
+    "project_number": "929718349121",
+    "firebase_url": "https://basurago-9cd0d-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "basurago-9cd0d",
+    "storage_bucket": "basurago-9cd0d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:929718349121:android:e04b5d47ff8c5dec6185c0",
+        "android_client_info": {
+          "package_name": "com.eddarz.BasuraGoRider"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "929718349121-rfp1lkfibk5oclkmt39dou3puc1qeg23.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBuXUtnB2UGETlYngCGJxfmFy4J8KXL2Y0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "929718349121-rfp1lkfibk5oclkmt39dou3puc1qeg23.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:929718349121:android:86ceed61d4a5d0036185c0",
+        "android_client_info": {
+          "package_name": "com.edliann.basurago.customer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "929718349121-9foti5mkd2ek79trei2tkl4p302fvm0n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.edliann.basurago.customer",
+            "certificate_hash": "1c64f487d3c3ace1525c85662cc1a0debd1ffef2"
+          }
+        },
+        {
+          "client_id": "929718349121-hcbt0djc4kbiuhi95l49uchel78674vb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.edliann.basurago.customer",
+            "certificate_hash": "62ecfa2b6a5b65eeb3a5d92ce8279c8d23036e84"
+          }
+        },
+        {
+          "client_id": "929718349121-rfp1lkfibk5oclkmt39dou3puc1qeg23.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBuXUtnB2UGETlYngCGJxfmFy4J8KXL2Y0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "929718349121-rfp1lkfibk5oclkmt39dou3puc1qeg23.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

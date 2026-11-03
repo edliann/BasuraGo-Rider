@@ -1,10 +1,10 @@
 import {
-  connectFunctionsEmulator,
   getFunctions,
   httpsCallable,
 } from 'firebase/functions';
 
-import app from '../firebase';
+import { refreshProvisionedUserToken } from '../auth/provisionedToken';
+import firebaseApp, { auth } from '../firebase';
 
 export interface GetRiderInvitationInput {
   invitationId: string;
@@ -25,13 +25,19 @@ export interface CreateRiderAccountInput {
   password: string;
 }
 
+export interface CompleteRiderInvitationInput {
+  invitationId: string;
+  invitationToken: string;
+  fullName: string;
+}
+
 export interface CreateRiderAccountResult {
   riderId: string;
   email: string;
   phoneNumber: string;
 }
 
-const functions = getFunctions(app);
+const functions = getFunctions(firebaseApp);
 
 const getRiderInvitationFunction =
   httpsCallable<
@@ -49,6 +55,15 @@ const createRiderAccountFunction =
   >(
     functions,
     'createRiderAccountFromInvitation',
+  );
+
+const completeRiderInvitationFunction =
+  httpsCallable<
+    CompleteRiderInvitationInput,
+    CreateRiderAccountResult
+  >(
+    functions,
+    'completeRiderInvitationFunction',
   );
 
 export async function getRiderInvitation(
@@ -84,6 +99,23 @@ export async function createRiderAccountFromInvitation(
       password:
         input.password,
     });
+
+  return result.data;
+}
+
+export async function completeRiderInvitation(
+  input: CompleteRiderInvitationInput,
+): Promise<CreateRiderAccountResult> {
+  const result = await completeRiderInvitationFunction({
+    invitationId: input.invitationId.trim(),
+    invitationToken: input.invitationToken.trim(),
+    fullName: input.fullName.trim(),
+  });
+
+  await refreshProvisionedUserToken(
+    auth.currentUser,
+    result.data.riderId,
+  );
 
   return result.data;
 }

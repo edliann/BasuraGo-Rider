@@ -119,8 +119,16 @@ export default function InvitationScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to sign in"
+          onPress={() => router.replace('/login')}
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>‹  Back to Sign In</Text>
+        </Pressable>
         <Text style={styles.title}>
-          You're Invited
+          You&apos;re Invited
         </Text>
 
         <Text style={styles.subtitle}>
@@ -188,7 +196,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#f7f9f7',
+    backgroundColor: '#F5F8F6',
   },
 
   centered: {
@@ -201,28 +209,43 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 15,
-    color: '#555',
+    color: '#64736A',
   },
 
   card: {
     width: '100%',
     padding: 24,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#DCE8DE',
+    backgroundColor: '#FFFFFF',
     elevation: 3,
   },
 
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#1b1b1b',
+    color: '#173D2C',
     marginBottom: 10,
+  },
+
+  backButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+
+  backButtonText: {
+    color: '#176744',
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   subtitle: {
     fontSize: 16,
     lineHeight: 23,
-    color: '#555',
+    color: '#64736A',
     marginBottom: 28,
   },
 
@@ -233,30 +256,30 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#777',
+    color: '#64736A',
     marginBottom: 5,
   },
 
   value: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#1b1b1b',
+    color: '#173D2C',
   },
 
   notice: {
     marginTop: 12,
     fontSize: 14,
     lineHeight: 21,
-    color: '#555',
+    color: '#64736A',
   },
 
 button: {
   marginTop: 24,
   height: 54,
-  borderRadius: 10,
+  borderRadius: 14,
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: '#1b5e20',
+  backgroundColor: '#176744',
 },
 
 buttonText: {

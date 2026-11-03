@@ -1,41 +1,190 @@
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Linking,
+  Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAvailablePickups,
-  getMyPickups,
-  getPickupHistory,
+  getCompletedPickupCount,
+  getMyActivePickupCount,
 } from '../../services/firebase/pickups/pickup.services';
 import { updateRiderOnlineStatus } from '../../services/firebase/riders/riders.services';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext/AuthContext';
-import { logout } from '../../services/firebase/auth/auth.services';
+import { auth } from '../../services/firebase/auth/auth.services';
 import * as Location from 'expo-location';
-import { saveRiderLocation } from '../../services/firebase/riders/location.services';
+import {useRiderLocation} from '../../contexts/RiderLocationContext/RiderLocationContext';
+import {stopRiderBackgroundLocation} from
+  '../../services/location/riderBackgroundLocationTask';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNav from '../../components/common/BottomNav';
+import RemixIcon from 'react-native-remix-icon';
+import AvailablePickupsIcon from '../../../assets/images/available-pickups-icon.png';
+import ActivePickupsIcon from '../../../assets/images/active-pickups-icon.png';
+import PickupHistoryIcon from '../../../assets/images/history-icon.png';
 
 export default function Dashboard() {
   const { rider, loading } = useAuth();
+  const {
+    isOnline: riderOnline,
+    availabilityLoaded,
+    locationTracking,
+    locationMessage,
+    checkLocationServices,
+    setLocationMessage,
+  } = useRiderLocation();
 
   const [pickupsCount, setPickupsCount] = useState(0);
   const [myPickupsCount, setMyPickupsCount] = useState(0);
   const [completedCount, setCompletedCount] = useState(0);
-  const [pickupsLoading, setPickupsLoading] = useState(true);
-  const [isOnline, setIsOnline] = useState(rider?.isOnline ?? false);
+  const [pickupsLoadedForRider, setPickupsLoadedForRider] =
+    useState<typeof rider>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const pickupRequestInFlight = useRef(false);
+  const refreshQueued = useRef(false);
+  const refreshSequence = useRef(0);
+  const dashboardActive = useRef(true);
+  const loadPickupsRef = useRef<
+    ((isRefresh?: boolean) => Promise<void>) | null
+  >(null);
+  const pickupsLoading = !rider || pickupsLoadedForRider !== rider;
+  const isOnline = availabilityLoaded
+    ? riderOnline
+    : rider?.isOnline ?? false;
   const [onlineStatusLoading, setOnlineStatusLoading] = useState(false);
-  const [locationTracking, setLocationTracking] = useState(false);
-  const locationSubscription = useRef<Location.LocationSubscription | null>(null);
-  useEffect(() => {
-    setIsOnline(rider?.isOnline ?? false);
-  }, [rider]);
+  const availabilityWriteVersion = useRef(0);
+  const availabilityWriteQueue = useRef<Promise<void>>(Promise.resolve());
+
+  const persistAvailability = useCallback((riderId: string, value: boolean) => {
+    const version = ++availabilityWriteVersion.current;
+    const write = availabilityWriteQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (
+          version !== availabilityWriteVersion.current ||
+          auth.currentUser?.uid !== riderId
+        ) return false;
+        await updateRiderOnlineStatus(riderId, value);
+        return version === availabilityWriteVersion.current;
+      });
+    availabilityWriteQueue.current = write.then(() => undefined, () => undefined);
+    return write;
+  }, []);
+
+  async function requestForegroundLocationPermission(): Promise<boolean> {
+    let permission = await Location.getForegroundPermissionsAsync();
+    if (permission.status === 'granted') return true;
+
+    setLocationMessage('Location permission is needed to report your position while you are online.');
+    const accepted = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Allow rider location',
+        'BasuraGo shares your GPS position with dispatch while you are online. ' +
+          'On Android, background access keeps sharing when you switch apps or lock your phone. ' +
+          'Sharing stops when you go offline.',
+        [
+          {text: 'Not now', style: 'cancel', onPress: () => resolve(false)},
+          {
+            text: 'Continue',
+            onPress: () => {
+              void Location.requestForegroundPermissionsAsync().then((result) => {
+                permission = result;
+                resolve(result.status === 'granted');
+              }).catch(() => resolve(false));
+            },
+          },
+        ],
+        {cancelable: false},
+      );
+    });
+
+    if (!accepted) {
+      setLocationMessage(permission.canAskAgain
+        ? 'Location permission was denied. Allow it to share your location while online.'
+        : 'Location permission is blocked. Enable it in Settings to share your location.');
+      if (!permission.canAskAgain) {
+        Alert.alert(
+          'Enable location in Settings',
+          'BasuraGo needs foreground location permission while you are online.',
+          [
+            {text: 'Later', style: 'cancel'},
+            {text: 'Open Settings', onPress: () => void Linking.openSettings()},
+          ],
+        );
+      }
+    }
+    return accepted;
+  }
+
+  async function requestBackgroundLocationPermission(): Promise<boolean> {
+    if (Platform.OS !== 'android') return true;
+
+    let permission = await Location.getBackgroundPermissionsAsync();
+    if (permission.status === 'granted') return true;
+
+    const accepted = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Allow background location',
+        'While you are online, BasuraGo Rider needs background location access ' +
+          'to keep sharing your position with dispatch when you switch apps or ' +
+          'lock your phone. Android may ask you to select “Allow all the time” ' +
+          'or enable background access in Settings.',
+        [
+          {text: 'Not now', style: 'cancel', onPress: () => resolve(false)},
+          {
+            text: 'Continue',
+            onPress: () => {
+              void Location.requestBackgroundPermissionsAsync().then(
+                (result) => {
+                  permission = result;
+                  resolve(result.status === 'granted');
+                },
+              ).catch((error: unknown) => {
+                console.warn(
+                  'Unable to request background location permission:',
+                  error,
+                );
+                resolve(false);
+              });
+            },
+          },
+        ],
+        {cancelable: false},
+      );
+    });
+
+    if (!accepted) {
+      setLocationMessage(
+        permission.canAskAgain ?
+          'Background location access was not granted. You can allow it the next time you go online.' :
+          'Background location is blocked. Enable “Allow all the time” for BasuraGo Rider in Android Settings.',
+      );
+      if (!permission.canAskAgain) {
+        Alert.alert(
+          'Enable background location',
+          'Open app permissions in Android Settings and allow location access all the time. Then return to BasuraGo Rider and go online.',
+          [
+            {text: 'Later', style: 'cancel'},
+            {
+              text: 'Open Settings',
+              onPress: () => void Linking.openSettings(),
+            },
+          ],
+        );
+      }
+    }
+    return accepted;
+  }
 
   async function handleOnlineStatusChange() {
     if (!rider) return;
@@ -43,13 +192,26 @@ export default function Dashboard() {
     const nextStatus = !isOnline;
     try {
       setOnlineStatusLoading(true);
-      await updateRiderOnlineStatus(rider.id, nextStatus);
-      setIsOnline(nextStatus);
-
       if (nextStatus) {
-        await startLocationTracking();
+        if (!(await requestForegroundLocationPermission())) return;
+        if (!(await requestBackgroundLocationPermission())) return;
+        if (!(await checkLocationServices())) return;
+        await persistAvailability(rider.id, true);
+        console.info('Rider availability set online.');
       } else {
-        stopLocationTracking();
+        if (Platform.OS === 'android') {
+          try {
+            await stopRiderBackgroundLocation();
+          } catch (error) {
+            console.warn(
+              'Unable to stop background location before going offline:',
+              error,
+            );
+          }
+        }
+        await persistAvailability(rider.id, false);
+        console.info('Rider manually went offline.');
+        setLocationMessage('Location sharing is paused. Go online to resume reporting.');
       }
     } catch (error) {
       console.error('Failed to update rider online status:', error);
@@ -59,123 +221,93 @@ export default function Dashboard() {
     }
   }
 
-  async function loadPickups() {
+  const loadPickups = useCallback(async (isRefresh = false) => {
+    if (pickupRequestInFlight.current) {
+      refreshQueued.current = true;
+      return;
+    }
     if (!rider) return;
 
+    pickupRequestInFlight.current = true;
+    const requestId = ++refreshSequence.current;
+    if (isRefresh) {
+      setRefreshing(true);
+      setRefreshError('');
+    }
+
     try {
-      setPickupsLoading(true);
-      const [availablePickups, assignedPickups, completedPickups] = await Promise.all([
+      const [availableResult, activeCountResult, completedCountResult] =
+        await Promise.allSettled([
         getAvailablePickups(),
-        getMyPickups(rider.id),
-        getPickupHistory(rider.id),
+        getMyActivePickupCount(rider.id),
+        getCompletedPickupCount(rider.id),
       ]);
+      if (availableResult.status === 'rejected') throw availableResult.reason;
+      if (activeCountResult.status === 'rejected') throw activeCountResult.reason;
+      if (completedCountResult.status === 'rejected') throw completedCountResult.reason;
+      const availablePickups = availableResult.value;
+      const activePickupCount = activeCountResult.value;
+      const completedPickupCount = completedCountResult.value;
+      if (
+        !dashboardActive.current ||
+        requestId !== refreshSequence.current ||
+        auth.currentUser?.uid !== rider.id
+      ) return;
       setPickupsCount(availablePickups.length);
-      setMyPickupsCount(assignedPickups.filter((pickup) => pickup.status !== 'completed').length);
-      setCompletedCount(completedPickups.length);
+      setMyPickupsCount(activePickupCount);
+      setCompletedCount(completedPickupCount);
+      setRefreshError('');
     } catch (error) {
       console.error('Failed to load dashboard pickup counts:', error);
+      if (
+        dashboardActive.current &&
+        requestId === refreshSequence.current &&
+        isRefresh
+      ) {
+        setRefreshError('Dashboard counts could not be refreshed. Showing the last loaded data.');
+      }
     } finally {
-      setPickupsLoading(false);
+      pickupRequestInFlight.current = false;
+      if (
+        dashboardActive.current &&
+        requestId === refreshSequence.current
+      ) {
+        setPickupsLoadedForRider(rider);
+        setRefreshing(false);
+      }
+      if (refreshQueued.current && dashboardActive.current) {
+        refreshQueued.current = false;
+        void loadPickupsRef.current?.(true);
+      }
     }
-  }
-
-  useEffect(() => {
-    if (rider) loadPickups();
   }, [rider]);
 
   useEffect(() => {
+    dashboardActive.current = true;
+    loadPickupsRef.current = loadPickups;
     return () => {
-      locationSubscription.current?.remove();
-      locationSubscription.current = null;
+      dashboardActive.current = false;
+      refreshQueued.current = false;
+      refreshSequence.current += 1;
     };
-  }, []);
+  }, [loadPickups]);
 
-  async function handleGetCurrentLocation() {
-    if (!rider) return;
-
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Permission Required',
-          'BasuraGo needs your location to provide rider location services.',
-        );
-        return;
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) {
+        return loadPickups(false);
       }
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      const { latitude, longitude, accuracy } = location.coords;
-
-      await saveRiderLocation(rider.id, latitude, longitude, accuracy ?? null);
-      Alert.alert('Location Updated', 'Your current location has been saved.');
-    } catch (error) {
-      console.error('Failed to save rider location:', error);
-      Alert.alert('Location Error', 'Unable to save your current location.');
-    }
-  }
-
-  async function startLocationTracking() {
-    if (!rider) return;
-
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Permission Required',
-          'BasuraGo needs your location while you are online.',
-        );
-        return;
-      }
-
-      const subscription = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 15000,
-          distanceInterval: 25,
-        },
-        async (location) => {
-          const { latitude, longitude, accuracy } = location.coords;
-          try {
-            await saveRiderLocation(rider.id, latitude, longitude, accuracy ?? null);
-          } catch (error) {
-            console.error('Failed to save rider location:', error);
-          }
-        },
-      );
-
-      locationSubscription.current?.remove();
-      locationSubscription.current = subscription;
-      setLocationTracking(true);
-    } catch (error) {
-      console.error('Failed to start location tracking:', error);
-      setLocationTracking(false);
-      Alert.alert('Location Error', 'Unable to start location tracking.');
-    }
-  }
-
-  function stopLocationTracking() {
-    locationSubscription.current?.remove();
-    locationSubscription.current = null;
-    setLocationTracking(false);
-  }
-
-  async function handleLogout() {
-    try {
-      stopLocationTracking();
-      await logout();
-      router.replace('/login');
-    } catch (error) {
-      console.error('Failed to log out:', error);
-      Alert.alert('Sign Out Failed', 'Please try again.');
-    }
-  }
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadPickups]);
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#167647" />
+        <ActivityIndicator size="large" color="#176744" />
         <Text style={styles.loadingText}>Getting your dashboard ready…</Text>
       </View>
     );
@@ -197,26 +329,28 @@ export default function Dashboard() {
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void loadPickups(true)}
+          tintColor="#176744"
+          colors={['#176744']}
+        />
+      }
     >
+      {refreshError ? (
+        <Text accessibilityRole="alert" style={styles.refreshError}>
+          {refreshError}
+        </Text>
+      ) : null}
       <View style={styles.hero}>
-        <View style={styles.heroTopRow}>
-          <View style={styles.brandMark}>
-            <Text style={styles.brandMarkText}>B</Text>
-          </View>
-          <View style={styles.brandCopy}>
-            <Text style={styles.logo}>BasuraGo</Text>
-            <Text style={styles.role}>RIDER WORKSPACE</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-            style={styles.signOutIcon}
-            onPress={handleLogout}
-          >
-            <Text style={styles.signOutIconText}>↗</Text>
-          </Pressable>
-        </View>
-
+          <Image
+            source={require('../../../assets/images/basurago-logo.png')}
+            style={styles.brandLogo}
+            resizeMode="contain"
+            accessibilityLabel="BasuraGo logo"
+          />
+        <Text style={styles.role}>RIDER WORKSPACE</Text>
         <Text style={styles.greeting}>Good day, {firstName}!</Text>
         <Text style={styles.heroSubtitle}>Ready to make your next collection count?</Text>
 
@@ -243,7 +377,7 @@ export default function Dashboard() {
             disabled={onlineStatusLoading}
           >
             {onlineStatusLoading ? (
-              <ActivityIndicator color={isOnline ? '#176B43' : '#FFFFFF'} size="small" />
+              <ActivityIndicator color={isOnline ? '#176744' : '#FFFFFF'} size="small" />
             ) : (
               <Text style={[styles.statusButtonText, isOnline && styles.statusButtonTextOnline]}>
                 {isOnline ? 'Go offline' : 'Go online'}
@@ -255,17 +389,14 @@ export default function Dashboard() {
 
       <View style={styles.statsRow}>
         <View style={[styles.statCard, styles.statCardPrimary]}>
-          <View style={styles.statIconWrap}><Text style={styles.statIcon}>↗</Text></View>
           <Text style={styles.statNumber}>{pickupsLoading ? '—' : pickupsCount}</Text>
           <Text style={styles.statLabel}>Available jobs</Text>
         </View>
         <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, styles.statIconWrapSoft]}><Text style={styles.statIconSoft}>▣</Text></View>
           <Text style={styles.statNumberDark}>{pickupsLoading ? '—' : myPickupsCount}</Text>
           <Text style={styles.statLabelDark}>My active pickups</Text>
         </View>
         <View style={styles.statCard}>
-          <View style={[styles.statIconWrap, styles.statIconWrapSoft]}><Text style={styles.statIconSoft}>✓</Text></View>
           <Text style={styles.statNumberDark}>{pickupsLoading ? '—' : completedCount}</Text>
           <Text style={styles.statLabelDark}>Completed</Text>
         </View>
@@ -274,18 +405,21 @@ export default function Dashboard() {
       <View style={styles.quickActions}>
         <View style={styles.sectionHeading}>
           <Text style={styles.sectionTitle}>Quick actions</Text>
-          <Text style={styles.sectionHint}>Your tools for today</Text>
         </View>
-        <Pressable style={styles.locationAction} onPress={handleGetCurrentLocation}>
-          <View style={styles.locationActionIcon}><Text style={styles.locationActionIconText}>⌖</Text></View>
+        <Text style={styles.sectionHint}>Your tools for today</Text>
+        <View style={styles.locationAction}>
+          <View style={styles.locationActionIcon}><RemixIcon name="map-pin-line" size={22} color="#176744" accessible={false} /></View>
           <View style={styles.locationActionCopy}>
-            <Text style={styles.locationActionTitle}>Update my location</Text>
-            <Text style={styles.locationActionSubtitle}>
-              {locationTracking ? 'Live location tracking is active' : 'Share your latest GPS position'}
+            <Text style={styles.locationActionTitle}>{locationTracking ? 'Live location reporting' : 'Location reporting'}</Text>
+            <Text
+              style={styles.locationActionSubtitle}
+              accessibilityLiveRegion="polite"
+            >
+              {locationMessage}
             </Text>
           </View>
-          <Text style={styles.actionChevron}>›</Text>
-        </Pressable>
+          <View style={[styles.statusDot, locationTracking ? styles.statusDotOnline : styles.statusDotOffline]} />
+        </View>
       </View>
 
       <View style={styles.servicesSection}>
@@ -295,38 +429,22 @@ export default function Dashboard() {
         </View>
         <View style={styles.serviceGrid}>
           <Pressable accessibilityRole="button" accessibilityLabel="Open available pickups" style={({ pressed }) => [styles.serviceCard, pressed && styles.servicePressed]} onPress={() => router.push('/available-pickups')}>
-            <View style={styles.serviceIcon}><Text style={styles.serviceIconText}>♻</Text></View>
+            <View style={styles.serviceIcon}><Image source={AvailablePickupsIcon} style={styles.serviceImage} accessible={false} importantForAccessibility="no" /></View>
             <Text style={styles.serviceTitle}>Available</Text>
             <Text style={styles.serviceSubtitle}>{pickupsLoading ? 'Loading…' : `${pickupsCount} requests`}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Open my pickups" style={({ pressed }) => [styles.serviceCard, pressed && styles.servicePressed]} onPress={() => router.push('/my-pickups')}>
-            <View style={styles.serviceIcon}><Text style={styles.serviceIconText}>▤</Text></View>
+            <View style={styles.serviceIcon}><Image source={ActivePickupsIcon} style={styles.serviceImage} accessible={false} importantForAccessibility="no" /></View>
             <Text style={styles.serviceTitle}>My Pickups</Text>
             <Text style={styles.serviceSubtitle}>{pickupsLoading ? 'Loading…' : `${myPickupsCount} active`}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="Open pickup history" style={({ pressed }) => [styles.serviceCard, pressed && styles.servicePressed]} onPress={() => router.push('/pickup-history')}>
-            <View style={styles.serviceIcon}><Text style={styles.serviceIconText}>✓</Text></View>
+            <View style={styles.serviceIcon}><Image source={PickupHistoryIcon} style={styles.serviceImage} accessible={false} importantForAccessibility="no" /></View>
             <Text style={styles.serviceTitle}>History</Text>
             <Text style={styles.serviceSubtitle}>{pickupsLoading ? 'Loading…' : `${completedCount} completed`}</Text>
           </Pressable>
         </View>
       </View>
-
-      <Pressable accessibilityRole="button" accessibilityLabel="Open rider account profile" onPress={() => router.push('/account')} style={({ pressed }) => [styles.profileCard, pressed && styles.servicePressed]}>
-        <View style={styles.profileInitial}><Text style={styles.profileInitialText}>{firstName.charAt(0).toUpperCase()}</Text></View>
-        <View style={styles.profileCopy}>
-          <Text style={styles.profileName}>{rider.fullName}</Text>
-          <Text style={styles.profileMeta}>{rider.phoneNumber || 'No phone number added'}</Text>
-          <Text style={styles.profileMeta}>Vehicle: {rider.vehicleId || 'Not assigned'}</Text>
-          <Text style={styles.profileMeta}>Tap to manage your account</Text>
-        </View>
-        <View style={styles.profileStatus}><Text style={styles.profileStatusText}>{rider.status}</Text></View>
-        <Text style={styles.actionChevron}>›</Text>
-      </Pressable>
-
-      <Pressable style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Sign out of BasuraGo</Text>
-      </Pressable>
       <Text style={styles.footerText}>BasuraGo Rider · Collect responsibly</Text>
     </ScrollView>
     <BottomNav />
@@ -335,20 +453,18 @@ export default function Dashboard() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F5F8F5' },
-  container: { flex: 1, backgroundColor: '#F5F8F5' },
+  screen: { flex: 1, backgroundColor: '#F5F8F6' },
+  container: { flex: 1, backgroundColor: '#F5F8F6' },
   content: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 150 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#F5F8F5' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#F5F8F6' },
   loadingText: { marginTop: 12, color: '#64756A', fontSize: 14 },
   errorText: { color: '#B42318', fontSize: 15, textAlign: 'center' },
+  refreshError: { marginBottom: 12, color: '#A23B32', fontSize: 13, lineHeight: 18 },
 
-  hero: { padding: 22, paddingTop: 20, borderRadius: 26, backgroundColor: '#105C3B', overflow: 'hidden' },
+  hero: { padding: 22, paddingTop: 20, borderRadius: 24, backgroundColor: '#176744', overflow: 'hidden' },
   heroTopRow: { flexDirection: 'row', alignItems: 'center' },
-  brandMark: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#D7F5A6', alignItems: 'center', justifyContent: 'center' },
-  brandMarkText: { color: '#105C3B', fontSize: 25, fontWeight: '900' },
-  brandCopy: { marginLeft: 11, flex: 1 },
-  logo: { color: '#FFFFFF', fontSize: 21, fontWeight: '800', letterSpacing: -0.5 },
-  role: { marginTop: 3, color: '#BDE3C9', fontSize: 9, fontWeight: '800', letterSpacing: 1.8 },
+  brandLogo: { width: 90, height: 38, flexShrink: 1 },
+  role: { color: '#BDE3C9', fontSize: 8, fontWeight: '800', letterSpacing: 1 },
   signOutIcon: { width: 38, height: 38, borderRadius: 13, borderWidth: 1, borderColor: '#4B896B', alignItems: 'center', justifyContent: 'center' },
   signOutIconText: { color: '#FFFFFF', fontSize: 22, fontWeight: '600' },
   greeting: { marginTop: 28, color: '#FFFFFF', fontSize: 27, fontWeight: '800', letterSpacing: -0.8 },
@@ -364,18 +480,17 @@ const styles = StyleSheet.create({
   statusDescription: { marginTop: 4, color: '#68766D', fontSize: 11, lineHeight: 16 },
   statusButton: { minWidth: 94, paddingHorizontal: 13, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   statusButtonOnline: { backgroundColor: '#E7F5EC', borderWidth: 1, borderColor: '#B8E2C7' },
-  statusButtonOffline: { backgroundColor: '#167647' },
+  statusButtonOffline: { backgroundColor: '#176744' },
   statusButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
-  statusButtonTextOnline: { color: '#176B43' },
+  statusButtonTextOnline: { color: '#176744' },
   buttonDisabled: { opacity: 0.65 },
 
   statsRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
   statCard: { flex: 1, minWidth: 0, padding: 13, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E7EDE8' },
-  statCardPrimary: { backgroundColor: '#167647', borderColor: '#167647' },
+  statCardPrimary: { backgroundColor: '#176744', borderColor: '#176744' },
   statIconWrap: { width: 29, height: 29, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', marginBottom: 12 },
-  statIcon: { color: '#167647', fontSize: 18, fontWeight: '800' },
   statIconWrapSoft: { backgroundColor: '#E8F5EC' },
-  statIconSoft: { color: '#167647', fontSize: 16, fontWeight: '800' },
+  statImage: { width: 19, height: 19, resizeMode: 'contain' },
   statNumber: { color: '#FFFFFF', fontSize: 25, fontWeight: '800', letterSpacing: -0.5 },
   statLabel: { marginTop: 4, color: '#D8F0E0', fontSize: 10, lineHeight: 14, fontWeight: '600' },
   statNumberDark: { color: '#1D2C22', fontSize: 25, fontWeight: '800', letterSpacing: -0.5 },
@@ -389,17 +504,16 @@ const styles = StyleSheet.create({
   serviceCard: { flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 8, paddingVertical: 16, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4ECE5' },
   servicePressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
   serviceIcon: { width: 49, height: 49, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F5EC' },
-  serviceIconText: { color: '#176744', fontSize: 25, fontWeight: '800' },
+  serviceImage: { width: 28, height: 28, resizeMode: 'contain' },
   serviceTitle: { marginTop: 11, color: '#25352A', fontSize: 11, fontWeight: '800', textAlign: 'center' },
   serviceSubtitle: { marginTop: 5, color: '#7A887E', fontSize: 9, textAlign: 'center' },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   sectionTitle: { color: '#1A2B20', fontSize: 20, fontWeight: '800', letterSpacing: -0.45 },
   sectionHint: { marginTop: 5, marginBottom: 13, color: '#7A887E', fontSize: 12, lineHeight: 17 },
   countPill: { minWidth: 27, height: 25, paddingHorizontal: 8, borderRadius: 9, backgroundColor: '#E4F3E8', alignItems: 'center', justifyContent: 'center' },
-  countPillText: { color: '#176B43', fontSize: 12, fontWeight: '800' },
+  countPillText: { color: '#176744', fontSize: 12, fontWeight: '800' },
   locationAction: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 18, borderWidth: 1, borderColor: '#E4ECE5', backgroundColor: '#FFFFFF' },
   locationActionIcon: { width: 43, height: 43, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E8F5EC' },
-  locationActionIconText: { color: '#167647', fontSize: 26, fontWeight: '700' },
   locationActionCopy: { flex: 1, marginLeft: 12 },
   locationActionTitle: { color: '#25352A', fontSize: 14, fontWeight: '800' },
   locationActionSubtitle: { marginTop: 4, color: '#7A887E', fontSize: 11 },
@@ -407,18 +521,18 @@ const styles = StyleSheet.create({
   loader: { marginVertical: 20 },
   inlineError: { padding: 14, borderRadius: 12, color: '#B42318', backgroundColor: '#FEECEB', fontSize: 13 },
   emptyCard: { paddingHorizontal: 22, paddingVertical: 25, alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: '#E6EDE7', borderStyle: 'dashed', backgroundColor: '#FFFFFF' },
-  emptyIcon: { color: '#167647', fontSize: 26, fontWeight: '700' },
+  emptyIcon: { color: '#176744', fontSize: 26, fontWeight: '700' },
   emptyTitle: { marginTop: 9, color: '#25352A', fontSize: 15, fontWeight: '800' },
   emptyText: { maxWidth: 270, marginTop: 5, color: '#7A887E', fontSize: 12, lineHeight: 18, textAlign: 'center' },
 
   profileCard: { flexDirection: 'row', alignItems: 'center', marginTop: 32, padding: 16, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E6EDE7' },
   profileInitial: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DDF2E3' },
-  profileInitialText: { color: '#176B43', fontSize: 19, fontWeight: '800' },
+  profileInitialText: { color: '#176744', fontSize: 19, fontWeight: '800' },
   profileCopy: { flex: 1, marginLeft: 12 },
   profileName: { color: '#25352A', fontSize: 14, fontWeight: '800' },
   profileMeta: { marginTop: 3, color: '#7A887E', fontSize: 11 },
   profileStatus: { maxWidth: 88, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 9, backgroundColor: '#E8F5EC' },
-  profileStatusText: { color: '#176B43', fontSize: 10, fontWeight: '800', textTransform: 'capitalize' },
+  profileStatusText: { color: '#176744', fontSize: 10, fontWeight: '800', textTransform: 'capitalize' },
   logoutButton: { marginTop: 14, paddingVertical: 14, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#E1E7E2', backgroundColor: '#FFFFFF' },
   logoutText: { color: '#68766D', fontSize: 13, fontWeight: '700' },
   footerText: { marginTop: 18, color: '#9AA69D', fontSize: 10, textAlign: 'center', letterSpacing: 0.4 },
