@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Slide1Image from '../../../assets/onboarding/slider1.png';
+import Slide2Image from '../../../assets/onboarding/slider2.png';
+import Slide3Image from '../../../assets/onboarding/slider3.png';
 import {
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -14,16 +18,19 @@ import {
 
 const slides = [
   {
+    image: Slide1Image,
     title: 'Welcome to BasuraGo',
     description:
       'Your waste collection partner. Manage your pickups easily and efficiently.',
   },
   {
+    image: Slide2Image,
     title: 'Find & Accept Pickups',
     description:
       'View available pickups and choose the jobs that fit your route.',
   },
   {
+    image: Slide3Image,
     title: 'Complete Pickups',
     description:
       'Keep track of your assigned pickups and complete every collection with confidence.',
@@ -46,7 +53,7 @@ export default function Onboarding() {
       'true',
     );
 
-    router.replace('./login');
+    router.replace('/login');
   }
 
   function handleNext() {
@@ -72,11 +79,12 @@ export default function Onboarding() {
       </Pressable>
 
       <View style={styles.content}>
-        <View style={styles.imagePlaceholder}>
-          <Text style={styles.imageText}>
-            {currentIndex + 1}
-          </Text>
-        </View>
+        <Image
+          source={currentSlide.image}
+          style={styles.onboardingImage}
+          resizeMode="contain"
+          accessibilityLabel={`Onboarding illustration ${currentIndex + 1}`}
+        />
 
         <Text style={styles.title}>
           {currentSlide.title}
@@ -142,19 +150,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
 
-  imagePlaceholder: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#eeeeee',
-    marginBottom: 48,
-  },
-
-  imageText: {
-    fontSize: 48,
-    fontWeight: '700',
+  onboardingImage: {
+    width: '100%',
+    maxWidth: 320,
+    height: 260,
+    marginBottom: 24,
   },
 
   title: {
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111111',
+    backgroundColor: '#176744',
   },
 
   nextText: {

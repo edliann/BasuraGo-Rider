@@ -24,6 +24,7 @@ export default function Index() {
   const {
     user,
     rider,
+    application,
     loading: authLoading,
   } = useAuth();
 
@@ -93,15 +94,15 @@ export default function Index() {
     );
   }
 
-  if (!rider) {
-    return (
-      <Redirect href="/access-denied" />
-    );
+  if (rider) {
+    return <Redirect href="/dashboard" />;
   }
 
-  return (
-    <Redirect href="/dashboard" />
-  );
+  if (application) {
+    return <Redirect href="/verification" />;
+  }
+
+  return <Redirect href="/access-denied" />;
 }
 
 const styles = StyleSheet.create({

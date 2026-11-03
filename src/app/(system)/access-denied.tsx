@@ -55,11 +55,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    backgroundColor: '#F5F8F6',
   },
 
   title: {
     fontSize: 30,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#173D2C',
   },
 
   message: {
@@ -68,6 +70,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     textAlign: 'center',
     maxWidth: 320,
+    color: '#64736A',
   },
 
   button: {
@@ -75,10 +78,10 @@ const styles = StyleSheet.create({
     height: 52,
     minWidth: 180,
     paddingHorizontal: 24,
-    borderRadius: 10,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111111',
+    backgroundColor: '#176744',
   },
 
   buttonText: {

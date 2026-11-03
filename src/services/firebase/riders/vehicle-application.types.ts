@@ -14,5 +14,4 @@ export interface RiderVehicleInformation {
   registrationNumber: string;
 }
 
-export interface VehicleInformationForm
-  extends RiderVehicleInformation {}
+export type VehicleInformationForm = RiderVehicleInformation;

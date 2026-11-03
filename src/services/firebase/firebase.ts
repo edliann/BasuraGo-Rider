@@ -1,12 +1,32 @@
-import { initializeApp } from 'firebase/app';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getApps, initializeApp } from 'firebase/app';
 import {
-  getFirestore,
   connectFirestoreEmulator,
+  getFirestore,
 } from 'firebase/firestore';
 import {
-  getAuth,
   connectAuthEmulator,
+  getReactNativePersistence,
+  getAuth,
+  initializeAuth,
+  setPersistence,
 } from 'firebase/auth';
+import {
+  connectFunctionsEmulator,
+  getFunctions,
+} from 'firebase/functions';
+
+const useFirebaseEmulators =
+  process.env.EXPO_PUBLIC_USE_FIREBASE_EMULATORS === 'true';
+const firebaseEmulatorHost =
+  process.env.EXPO_PUBLIC_FIREBASE_EMULATOR_HOST?.trim();
+
+if (useFirebaseEmulators && !__DEV__) {
+  throw new Error('Firebase emulators can only be enabled in development builds.');
+}
+if (useFirebaseEmulators && !firebaseEmulatorHost) {
+  throw new Error('EXPO_PUBLIC_FIREBASE_EMULATOR_HOST is required when Firebase emulators are enabled.');
+}
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -18,11 +38,44 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().find((candidate) =>
+  candidate.name === '[DEFAULT]') ?? initializeApp(firebaseConfig);
 
-const auth = getAuth(app);
+const nativePersistence = getReactNativePersistence(AsyncStorage);
+let authPersistenceReady: Promise<void> = Promise.resolve();
+const auth = (() => {
+  try {
+    return initializeAuth(app, {
+      persistence: nativePersistence,
+    });
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'auth/already-initialized'
+    ) {
+      const existingAuth = getAuth(app);
+      authPersistenceReady = setPersistence(
+        existingAuth,
+        nativePersistence,
+      );
+      return existingAuth;
+    }
+    throw error;
+  }
+})();
 const db = getFirestore(app);
+const functions = getFunctions(app, 'us-central1');
 
-export { app, auth, db };
+if (useFirebaseEmulators && firebaseEmulatorHost) {
+  connectAuthEmulator(auth, `http://${firebaseEmulatorHost}:9099`, {
+    disableWarnings: true,
+  });
+  connectFirestoreEmulator(db, firebaseEmulatorHost, 8085);
+  connectFunctionsEmulator(functions, firebaseEmulatorHost, 5001);
+}
+
+export { app, auth, authPersistenceReady, db };
 
 export default app;

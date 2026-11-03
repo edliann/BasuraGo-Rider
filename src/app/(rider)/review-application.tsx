@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { doc, getDoc, getFirestore } from 'firebase/firestore';
 
 import { getCurrentUser } from '../../services/firebase/auth/auth.services';
@@ -17,7 +17,7 @@ import {
   submitRiderApplication,
 } from '../../services/firebase/riders/verification.services';
 import type { RiderApplication } from '../../services/firebase/riders/verification.types';
-import app from '../../services/firebase/firebase';
+import firebaseApp from '../../services/firebase/firebase';
 
 type UserProfile = {
   fullName?: string;
@@ -27,7 +27,14 @@ type UserProfile = {
 
 export default function ReviewApplicationScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ correction?: string }>();
+
+  function handleBackToVerification() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/verification');
+  }
 
   const [application, setApplication] = useState<RiderApplication | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -36,14 +43,13 @@ export default function ReviewApplicationScreen() {
 
   const riderId = getCurrentUser()?.uid ?? '';
 
-  const loadApplication = async () => {
+  const loadApplication = useCallback(async () => {
     if (!riderId) {
       setLoading(false);
       return;
     }
-
     try {
-      const db = getFirestore(app);
+      const db = getFirestore(firebaseApp);
 
       const [applicationData, userSnapshot] = await Promise.all([
         getRiderApplication(riderId),
@@ -64,11 +70,19 @@ export default function ReviewApplicationScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [riderId]);
 
   useEffect(() => {
-    void loadApplication();
-  }, [riderId]);
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) {
+        return loadApplication();
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadApplication, riderId]);
 
   const handleSubmit = async () => {
     if (!riderId || !application) {
@@ -86,7 +100,7 @@ export default function ReviewApplicationScreen() {
         [
           {
             text: 'OK',
-            onPress: () => router.replace('/verification'),
+            onPress: handleBackToVerification,
           },
         ],
       );
@@ -104,7 +118,7 @@ export default function ReviewApplicationScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && riderId) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" />
@@ -123,7 +137,7 @@ export default function ReviewApplicationScreen() {
 
         <Pressable
           style={styles.primaryButton}
-          onPress={() => router.replace('/verification')}
+          onPress={handleBackToVerification}
         >
           <Text style={styles.primaryButtonText}>Back to Verification</Text>
         </Pressable>
@@ -176,6 +190,14 @@ export default function ReviewApplicationScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
     >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to verification"
+        style={styles.backButton}
+        onPress={handleBackToVerification}
+      >
+        <Text style={styles.backButtonText}>‹  Back to Verification</Text>
+      </Pressable>
       <Text style={styles.title}>
         {needsCorrection ? 'Review Required Changes' : 'Review Application'}
       </Text>
@@ -316,7 +338,7 @@ export default function ReviewApplicationScreen() {
           onPress={handleSubmit}
         >
           {submitting ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#FFFFFF" />
           ) : (
             <Text style={styles.primaryButtonText}>
               {needsCorrection
@@ -329,7 +351,7 @@ export default function ReviewApplicationScreen() {
 
       <Pressable
         style={styles.secondaryButton}
-        onPress={() => router.replace('/verification')}
+        onPress={handleBackToVerification}
       >
         <Text style={styles.secondaryButtonText}>
           Back to Verification
@@ -406,7 +428,7 @@ function VerificationRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f7fa',
+    backgroundColor: '#F5F8F6',
   },
   content: {
     padding: 20,
@@ -417,29 +439,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#f5f7fa',
+    backgroundColor: '#F5F8F6',
   },
   loadingText: {
     marginTop: 12,
-    color: '#667085',
+    color: '#64736A',
   },
   title: {
     fontSize: 28,
     fontWeight: '700',
-    color: '#101828',
+    color: '#173D2C',
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  backButtonText: {
+    color: '#176744',
+    fontSize: 14,
+    fontWeight: '700',
   },
   subtitle: {
     marginTop: 8,
     marginBottom: 20,
     fontSize: 15,
     lineHeight: 22,
-    color: '#667085',
+    color: '#64736A',
   },
   correctionCard: {
     marginBottom: 16,
     padding: 18,
-    borderRadius: 14,
-    backgroundColor: '#fff7ed',
+    borderRadius: 20,
+    backgroundColor: '#FFF5DF',
     borderWidth: 1,
     borderColor: '#fdba74',
   },
@@ -464,10 +497,10 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 16,
     padding: 18,
-    borderRadius: 14,
-    backgroundColor: '#fff',
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#eaecf0',
+    borderColor: '#DCE8DE',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -477,28 +510,28 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#101828',
+    color: '#173D2C',
     marginBottom: 12,
   },
   progressText: {
     marginTop: -7,
     marginBottom: 12,
     fontSize: 13,
-    color: '#667085',
+    color: '#64736A',
   },
   infoRow: {
     paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: '#f2f4f7',
+    borderBottomColor: '#E7EEE9',
   },
   infoLabel: {
     fontSize: 12,
-    color: '#667085',
+    color: '#64736A',
   },
   infoValue: {
     marginTop: 3,
     fontSize: 15,
-    color: '#101828',
+    color: '#173D2C',
     fontWeight: '500',
   },
   verificationRow: {
@@ -507,7 +540,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: '#f2f4f7',
+    borderBottomColor: '#E7EEE9',
   },
   verificationMain: {
     flex: 1,
@@ -521,14 +554,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   completedDot: {
-    backgroundColor: '#16a34a',
+    backgroundColor: '#176744',
   },
   incompleteDot: {
     backgroundColor: '#98a2b3',
   },
   verificationLabel: {
     fontSize: 14,
-    color: '#101828',
+    color: '#173D2C',
   },
   verificationActions: {
     alignItems: 'flex-end',
@@ -542,7 +575,7 @@ const styles = StyleSheet.create({
     color: '#15803d',
   },
   incompleteText: {
-    color: '#667085',
+    color: '#64736A',
   },
   editButton: {
     marginTop: 6,
@@ -559,19 +592,19 @@ const styles = StyleSheet.create({
   statusCard: {
     marginBottom: 16,
     padding: 18,
-    borderRadius: 14,
+    borderRadius: 20,
     backgroundColor: '#ecfdf3',
     borderWidth: 1,
     borderColor: '#a7f3d0',
   },
   correctionStatusCard: {
-    backgroundColor: '#fff7ed',
+    backgroundColor: '#FFF5DF',
     borderColor: '#fdba74',
   },
   statusTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#101828',
+    color: '#173D2C',
   },
   statusText: {
     marginTop: 7,
@@ -581,43 +614,43 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     minHeight: 52,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#16a34a',
+    backgroundColor: '#176744',
   },
   disabledButton: {
     opacity: 0.45,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
   secondaryButton: {
     marginTop: 12,
     minHeight: 50,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#d0d5dd',
+    borderColor: '#DCE8DE',
   },
   secondaryButtonText: {
-    color: '#344054',
+    color: '#64736A',
     fontSize: 15,
     fontWeight: '600',
   },
   errorTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#101828',
+    color: '#173D2C',
   },
   errorText: {
     marginTop: 8,
     marginBottom: 20,
     textAlign: 'center',
-    color: '#667085',
+    color: '#64736A',
   },
 });

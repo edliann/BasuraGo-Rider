@@ -13,7 +13,8 @@ import {
 
 import {
   auth,
-} from '../../services/firebase/auth/auth.services';
+  authPersistenceReady,
+} from '../../services/firebase/firebase';
 
 import {
   getRider,
@@ -34,7 +35,10 @@ import type {
 interface AuthContextValue {
   user: User | null;
   rider: Rider | null;
+  riderStatus: Rider['status'] | null;
   application: RiderApplication | null;
+  authInitializationFailed: boolean;
+  authorizationLoadFailed: boolean;
   loading: boolean;
   isRider: boolean;
 }
@@ -57,89 +61,126 @@ export function AuthProvider({
   const [rider, setRider] =
     useState<Rider | null>(null);
 
+  const [riderStatus, setRiderStatus] =
+    useState<Rider['status'] | null>(null);
+
   const [application, setApplication] =
     useState<RiderApplication | null>(null);
+
+  const [authorizationLoadFailed, setAuthorizationLoadFailed] =
+    useState(false);
+
+  const [authInitializationFailed, setAuthInitializationFailed] =
+    useState(false);
 
   const [loading, setLoading] =
     useState(true);
 
   useEffect(() => {
-    const unsubscribe =
-      onAuthStateChanged(
-        auth,
-        async (currentUser) => {
-          setLoading(true);
+    let isActive = true;
+    let unsubscribe: () => void = () => {};
 
-          console.log('AUTH STATE:', {
-            uid: currentUser?.uid ?? null,
-            email: currentUser?.email ?? null,
-            isAnonymous: currentUser?.isAnonymous ?? null,
-          });
+    void authPersistenceReady
+      .then(() => {
+        if (!isActive) return;
 
-          if (!currentUser) {
-            setUser(null);
-            setRider(null);
-            setApplication(null);
-            setLoading(false);
-            return;
-          }
+        unsubscribe = onAuthStateChanged(
+          auth,
+          async (currentUser) => {
+            setLoading(true);
+            setAuthorizationLoadFailed(false);
 
-          try {
-            setUser(currentUser);
+            console.log('AUTH STATE:', {
+              uid: currentUser?.uid ?? null,
+              email: currentUser?.email ?? null,
+              isAnonymous: currentUser?.isAnonymous ?? null,
+            });
 
-            console.log('AUTH UID:', currentUser.uid);
-
-            let riderProfile: Rider | null = null;
-
-            try {
-              riderProfile = await getRider(currentUser.uid);
-              console.log('GET RIDER SUCCESS:', riderProfile);
-            } catch (error) {
-              console.error('GET RIDER FAILED:', error);
-            }
-
-            if (
-              riderProfile &&
-              riderProfile.status === 'active'
-            ) {
-              setRider(riderProfile);
-            } else {
+            if (!currentUser) {
+              setUser(null);
               setRider(null);
+              setRiderStatus(null);
+              setApplication(null);
+              setAuthorizationLoadFailed(false);
+              setLoading(false);
+              return;
             }
 
-            let riderApplication: RiderApplication | null = null;
-
             try {
-              riderApplication =
-                await getRiderApplication(currentUser.uid);
+              setUser(currentUser);
 
-              console.log(
-                'GET APPLICATION SUCCESS:',
-                riderApplication,
-              );
+              console.log('AUTH UID:', currentUser.uid);
+
+              let riderProfile: Rider | null = null;
+
+              try {
+                riderProfile = await getRider(currentUser.uid);
+                setRiderStatus(riderProfile?.status ?? null);
+                console.log('GET RIDER SUCCESS:', riderProfile);
+              } catch (error) {
+                setRiderStatus(null);
+                console.error('GET RIDER FAILED:', error);
+              }
+
+              if (
+                riderProfile &&
+                riderProfile.status === 'active'
+              ) {
+                setRider(riderProfile);
+              } else {
+                setRider(null);
+              }
+
+              let riderApplication: RiderApplication | null = null;
+
+              try {
+                riderApplication =
+                  await getRiderApplication(currentUser.uid);
+
+                console.log(
+                  'GET APPLICATION SUCCESS:',
+                  riderApplication,
+                );
+              } catch (error) {
+                setAuthorizationLoadFailed(true);
+                console.error(
+                  'GET APPLICATION FAILED:',
+                  error,
+                );
+              }
+
+              setApplication(riderApplication);
             } catch (error) {
               console.error(
-                'GET APPLICATION FAILED:',
+                'Failed to load rider authentication data:',
                 error,
               );
+
+              setRider(null);
+              setRiderStatus(null);
+              setApplication(null);
+              setAuthorizationLoadFailed(true);
+            } finally {
+              setLoading(false);
             }
+          },
+        );
+      })
+      .catch((error: unknown) => {
+        console.error(
+          'Unable to initialize persistent Rider authentication:',
+          error,
+        );
+        if (isActive) {
+          setAuthInitializationFailed(true);
+          setLoading(false);
+        }
+      });
 
-            setApplication(riderApplication);
-          } catch (error) {
-            console.error(
-              'Failed to load rider authentication data:',
-              error,
-            );
-
-            setRider(null);
-            setApplication(null);
-          } finally {
-            setLoading(false);
-          }
-        },
-      );
-
-    return unsubscribe;
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
   }, []);
 
   return (
@@ -147,7 +188,10 @@ export function AuthProvider({
       value={{
         user,
         rider,
+        riderStatus,
         application,
+        authInitializationFailed,
+        authorizationLoadFailed,
         loading,
         isRider: rider !== null,
       }}

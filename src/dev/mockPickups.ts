@@ -3,11 +3,22 @@ import type { Pickup } from '../services/firebase/pickups/pickup.types';
 // In-memory fixtures only. This module never reads or writes Firebase.
 export const MOCK_PICKUP_MODE = __DEV__ && process.env.EXPO_PUBLIC_USE_MOCK_PICKUPS === 'true';
 
+const demoLocations: Record<string, { latitude: number; longitude: number }> = {
+  'demo-available-1': { latitude: 8.9518, longitude: 125.5404 },
+  'demo-available-2': { latitude: 8.9491, longitude: 125.5436 },
+  'demo-assigned-1': { latitude: 8.9542, longitude: 125.5232 },
+  'demo-assigned-2': { latitude: 8.9566, longitude: 125.5967 },
+  'demo-completed-1': { latitude: 8.9446, longitude: 125.5013 },
+  'demo-completed-2': { latitude: 8.9681, longitude: 125.5199 },
+};
+
 const makePickup = (values: Partial<Pickup> & Pick<Pickup, 'id' | 'customerName' | 'pickupAddress' | 'wasteTypeName' | 'status'>): Pickup => ({
   customerId: `demo-${values.id}`, addressId: `demo-address-${values.id}`, wasteTypeId: 'demo-waste',
   estimatedWeight: 8, actualWeight: null, scheduledDate: '2026-10-15', scheduledTime: '9:00 AM – 10:00 AM',
+  collectedWeightKg: null, facilityReceivedWeightKg: null,
+  collectionCompletedAt: null, facilityReceipt: null,
   facilityId: 'demo-facility', facilityName: 'BasuraGo Materials Recovery Facility',
-  facilityAddress: 'Libertad, Butuan City', riderId: null, vehicleId: 'BG-DEMO-01', notes: '',
+  facilityAddress: 'Libertad, Butuan City', pickupLocation: demoLocations[values.id], riderId: null, vehicleId: 'BG-DEMO-01', notes: '',
   completedAt: null, createdAt: null, updatedAt: null, ...values,
 });
 
@@ -46,7 +57,7 @@ export function updateMockPickup(id: string, action: 'accept' | 'start' | 'compl
     records[index] = { ...current, status: 'in_progress' };
   } else {
     if (current.status !== 'in_progress' || current.riderId !== riderId) throw new Error('This demo pickup cannot be completed.');
-    records[index] = { ...current, status: 'completed', actualWeight: current.actualWeight ?? current.estimatedWeight };
+    records[index] = { ...current, status: 'awaiting_facility_receipt' };
   }
   return { ...records[index] };
 }

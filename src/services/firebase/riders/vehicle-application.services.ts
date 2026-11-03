@@ -5,13 +5,13 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 
-import app from '../firebase';
+import firebaseApp from '../firebase';
 
 import type {
   RiderVehicleInformation,
 } from './vehicle-application.types';
 
-const db = getFirestore(app);
+const db = getFirestore(firebaseApp);
 
 export async function saveVehicleInformation(
   riderId: string,
